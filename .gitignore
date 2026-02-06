@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.mdbase/
+*.log
+.DS_Store

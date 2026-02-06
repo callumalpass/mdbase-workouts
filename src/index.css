@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  height: 100dvh;
+}
+
+body {
+  height: 100dvh;
+  overscroll-behavior: none;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Subtle paper grain */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+::selection {
+  background: rgba(224, 81, 112, 0.2);
+}
+
+::-webkit-scrollbar {
+  width: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4CFC7;
+}
+
+/* Kill number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.4);
+}
+
+/* Markdown inside chat bubbles */
+.chat-markdown p { margin: 0.4em 0; }
+.chat-markdown p:first-child { margin-top: 0; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown ul, .chat-markdown ol { margin: 0.4em 0; padding-left: 1.25em; }
+.chat-markdown li { margin: 0.15em 0; }
+.chat-markdown code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85em;
+  background: rgba(51, 86, 208, 0.08);
+  color: #3356D0;
+  padding: 0.1em 0.35em;
+}
+.chat-markdown pre {
+  margin: 0.5em 0;
+  padding: 0.6em 0.8em;
+  background: rgba(0,0,0,0.03);
+  border-left: 2px solid #E05170;
+  overflow-x: auto;
+}
+.chat-markdown pre code {
+  background: none;
+  color: #1C1917;
+  padding: 0;
+}
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 {
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+  font-family: "Fraunces", Georgia, serif;
+}
+.chat-markdown h1:first-child, .chat-markdown h2:first-child, .chat-markdown h3:first-child {
+  margin-top: 0;
+}
+.chat-markdown strong { font-weight: 600; }
+.chat-markdown table { border-collapse: collapse; margin: 0.4em 0; font-size: 0.9em; }
+.chat-markdown th, .chat-markdown td { border: 1px solid #D4CFC7; padding: 0.3em 0.5em; }
+.chat-markdown th { font-weight: 600; background: rgba(0,0,0,0.02); }
