@@ -3,3 +3,5 @@ dist/
 .mdbase/
 *.log
 .DS_Store
+data/*
+!data/_types/
