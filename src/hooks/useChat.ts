@@ -92,6 +92,10 @@ export function useChat() {
             const chunk = parseJsonString(evt.data);
             setMessages((prev) => {
               const updated = [...prev];
+              // Remove any trailing tool indicator before appending text
+              while (updated.length && updated[updated.length - 1]?.role === "tool") {
+                updated.pop();
+              }
               const last = updated[updated.length - 1];
               if (last?.role === "assistant") {
                 updated[updated.length - 1] = {
@@ -101,6 +105,25 @@ export function useChat() {
               }
               return updated;
             });
+          } else if (evt.event === "tool" && evt.data) {
+            try {
+              const { tool } = JSON.parse(evt.data);
+              if (tool) {
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  // Replace existing tool indicator or add one
+                  const last = updated[updated.length - 1];
+                  if (last?.role === "tool") {
+                    updated[updated.length - 1] = { role: "tool", content: tool };
+                  } else {
+                    updated.push({ role: "tool", content: tool });
+                  }
+                  return updated;
+                });
+              }
+            } catch {
+              // Ignore malformed tool events
+            }
           } else if (evt.event === "error") {
             let message = "Something went wrong. Please try again.";
             try {
@@ -132,6 +155,13 @@ export function useChat() {
         });
       }
     } finally {
+      // Remove any trailing tool indicator left over
+      setMessages((prev) => {
+        if (prev.length && prev[prev.length - 1]?.role === "tool") {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
       setStreaming(false);
       abortRef.current = null;
     }

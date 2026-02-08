@@ -3,8 +3,9 @@ import { useToday } from "../hooks/useToday";
 import { useExercises } from "../hooks/useExercises";
 import { parseWikilink, slugToName, formatTime, formatSet } from "../lib/utils";
 import { haptics } from "../lib/haptics";
-import type { Plan } from "../lib/types";
+import type { Plan, PlanTemplate } from "../lib/types";
 import PlanCard from "./PlanCard";
+import TemplateCard from "./TemplateCard";
 import QuickLogSheet from "./QuickLogSheet";
 import PlanCreatorSheet from "./PlanCreatorSheet";
 import SessionLoggerSheet from "./SessionLoggerSheet";
@@ -15,6 +16,8 @@ export default function TodayTab() {
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showPlanCreator, setShowPlanCreator] = useState(false);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<PlanTemplate | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   if (loading || !data) {
     return (
@@ -24,7 +27,7 @@ export default function TodayTab() {
     );
   }
 
-  const hasContent = data.plans.length > 0 || data.sessions.length > 0 || data.quickLogs.length > 0;
+  const hasContent = data.plans.length > 0 || data.sessions.length > 0 || data.quickLogs.length > 0 || (data.templates && data.templates.length > 0);
 
   return (
     <div className="p-5 pb-20 space-y-8">
@@ -39,6 +42,42 @@ export default function TodayTab() {
           })}
         </p>
       </div>
+
+      {/* Templates */}
+      {data.templates && data.templates.length > 0 && (
+        <section>
+          <button
+            onClick={() => setTemplatesOpen((o) => !o)}
+            className="flex items-center gap-2 w-full text-left mb-3"
+          >
+            <span
+              className="text-[10px] text-faded transition-transform duration-200"
+              style={{ transform: templatesOpen ? "rotate(90deg)" : "rotate(0deg)" }}
+            >
+              ▶
+            </span>
+            <h2 className="text-sm italic text-faded border-l-2 border-ocean pl-3">
+              Templates
+            </h2>
+          </button>
+          {templatesOpen && (
+            <div className="space-y-3">
+              {data.templates.map((template, i) => (
+                <div
+                  key={template.path}
+                  className="animate-fade-slide-in"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <TemplateCard
+                    template={template}
+                    onStart={(t) => { haptics.tap(); setActiveTemplate(t); }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Plans */}
       <section>
@@ -169,11 +208,12 @@ export default function TodayTab() {
         onCreated={refresh}
       />
 
-      {activePlan && (
+      {(activePlan || activeTemplate) && (
         <SessionLoggerSheet
           plan={activePlan}
+          template={activeTemplate}
           exercises={allExercises}
-          onClose={() => setActivePlan(null)}
+          onClose={() => { setActivePlan(null); setActiveTemplate(null); }}
           onSaved={refresh}
         />
       )}

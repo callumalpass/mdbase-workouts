@@ -49,6 +49,21 @@ export interface Plan {
   notes?: string;
 }
 
+export interface TemplateExercise {
+  exercise: string;
+  target_sets?: number;
+  target_reps?: string; // "8", "AMRAP", "10-12"
+  target_weight?: number;
+  notes?: string;
+}
+
+export interface PlanTemplate {
+  path: string;
+  title: string;
+  exercises: TemplateExercise[];
+  notes?: string;
+}
+
 export interface QuickLog {
   path: string;
   exercise: string;
@@ -65,6 +80,7 @@ export interface TodayData {
   plans: Plan[];
   sessions: Session[];
   quickLogs: QuickLog[];
+  templates: PlanTemplate[];
 }
 
 export interface ExerciseHistoryEntry {
@@ -101,6 +117,6 @@ export interface ExerciseHistory {
 }
 
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
 }

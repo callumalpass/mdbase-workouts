@@ -7,8 +7,8 @@ today.get("/", async (c) => {
   const db = c.get("db");
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Fetch today's plans, sessions, and recent quick logs in parallel
-  const [plansResult, sessionsResult, quickLogsResult] = await Promise.all([
+  // Fetch today's plans, sessions, recent quick logs, and all templates in parallel
+  const [plansResult, sessionsResult, quickLogsResult, templatesResult] = await Promise.all([
     db.query({
       types: ["plan"],
       where: `date.startsWith("${todayStr}")`,
@@ -28,6 +28,10 @@ today.get("/", async (c) => {
       limit: 20,
       include_body: false,
     }),
+    db.query({
+      types: ["plan-template"],
+      include_body: false,
+    }),
   ]);
 
   return c.json({
@@ -41,6 +45,10 @@ today.get("/", async (c) => {
       ...r.frontmatter,
     })),
     quickLogs: (quickLogsResult.results || []).map((r) => ({
+      path: r.path,
+      ...r.frontmatter,
+    })),
+    templates: (templatesResult.results || []).map((r) => ({
       path: r.path,
       ...r.frontmatter,
     })),

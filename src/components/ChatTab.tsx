@@ -52,33 +52,42 @@ export default function ChatTab() {
             </div>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blush/10 text-ink border border-blush/20"
-                  : "bg-card text-ink border-l-2 border-blush"
-              }`}
-            >
-              {msg.role === "assistant" ? (
-                <div className="chat-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                    {msg.content}
-                  </ReactMarkdown>
-                  {streaming && i === messages.length - 1 && (
-                    <span className="inline-block w-1.5 h-4 bg-blush ml-0.5 animate-pulse align-text-bottom" />
-                  )}
-                </div>
-              ) : (
-                <span className="whitespace-pre-wrap">{msg.content}</span>
-              )}
+        {messages.map((msg, i) =>
+          msg.role === "tool" ? (
+            <div key={i} className="flex justify-start">
+              <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono text-faded">
+                <span className="inline-block w-1 h-1 rounded-full bg-blush animate-pulse" />
+                Using {msg.content}...
+              </div>
             </div>
-          </div>
-        ))}
+          ) : (
+            <div
+              key={i}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-blush/10 text-ink border border-blush/20"
+                    : "bg-card text-ink border-l-2 border-blush"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="chat-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                    {streaming && i === messages.length - 1 && (
+                      <span className="inline-block w-1.5 h-4 bg-blush ml-0.5 animate-pulse align-text-bottom" />
+                    )}
+                  </div>
+                ) : (
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                )}
+              </div>
+            </div>
+          )
+        )}
       </div>
 
       {/* Input bar */}

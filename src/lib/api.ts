@@ -47,6 +47,14 @@ export const api = {
     update: (id: string, data: any) =>
       request<any>(`/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   },
+  planTemplates: {
+    list: () => request<any[]>("/plan-templates"),
+    get: (id: string) => request<any>(`/plan-templates/${id}`),
+    create: (data: any) =>
+      request<any>("/plan-templates", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: any) =>
+      request<any>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  },
   today: () => request<any>("/today"),
   settings: {
     get: () =>

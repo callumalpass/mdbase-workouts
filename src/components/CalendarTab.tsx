@@ -282,6 +282,7 @@ export default function CalendarTab() {
       {activePlan && (
         <SessionLoggerSheet
           plan={activePlan}
+          template={null}
           exercises={allExercises}
           onClose={() => setActivePlan(null)}
           onSaved={loadCalendarData}

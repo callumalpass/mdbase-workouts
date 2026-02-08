@@ -9,6 +9,7 @@ import { setDb, getDb } from "./lib/db.js";
 import exercises from "./routes/exercises.js";
 import sessions from "./routes/sessions.js";
 import plans from "./routes/plans.js";
+import planTemplates from "./routes/plan-templates.js";
 import quickLogs from "./routes/quick-logs.js";
 import today from "./routes/today.js";
 import chat from "./routes/chat.js";
@@ -43,6 +44,7 @@ async function start() {
   app.route("/api/exercises", exercises);
   app.route("/api/sessions", sessions);
   app.route("/api/plans", plans);
+  app.route("/api/plan-templates", planTemplates);
   app.route("/api/quick-logs", quickLogs);
   app.route("/api/today", today);
   app.route("/api/chat", chat);

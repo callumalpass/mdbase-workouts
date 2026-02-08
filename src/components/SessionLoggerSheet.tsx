@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { Plan, Exercise, TrackingType } from "../lib/types";
+import type { Plan, PlanTemplate, Exercise, TrackingType } from "../lib/types";
 import { api } from "../lib/api";
 import { parseWikilink, slugToName, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
@@ -20,12 +20,14 @@ interface ExerciseLog {
   tracking: TrackingType;
   targetSets: number;
   targetReps: number;
+  targetRepsLabel: string | null;
   targetWeight: number | null;
   sets: SetEntry[];
 }
 
 interface Props {
   plan: Plan | null;
+  template: PlanTemplate | null;
   exercises: Exercise[];
   onClose: () => void;
   onSaved: () => void;
@@ -35,7 +37,8 @@ function emptySet(): SetEntry {
   return { weight: "", reps: "", duration: "", distance: "", done: false };
 }
 
-export default function SessionLoggerSheet({ plan, exercises: allExercises, onClose, onSaved }: Props) {
+export default function SessionLoggerSheet({ plan, template, exercises: allExercises, onClose, onSaved }: Props) {
+  const source = plan || template;
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -49,22 +52,27 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
   const { getLastUsed, saveLastUsed } = useLastUsed();
 
   useEffect(() => {
-    if (!plan) return;
-    const logs: ExerciseLog[] = plan.exercises.map((planEx) => {
-      const slug = parseWikilink(planEx.exercise);
+    if (!source) return;
+    const logs: ExerciseLog[] = source.exercises.map((ex) => {
+      const slug = parseWikilink(ex.exercise);
       const exerciseData = allExercises.find((e) => pathToSlug(e.path) === slug);
       const tracking = exerciseData?.tracking || "weight_reps";
-      const targetSets = planEx.target_sets || 3;
+      const targetSets = ex.target_sets || 3;
       const lastUsed = getLastUsed(slug);
 
+      // Template target_reps is string ("8", "AMRAP", "10-12"); plan target_reps is number
+      const rawReps = ex.target_reps;
+      const numericReps = typeof rawReps === "string" ? Number(rawReps) : rawReps;
+      const repsIsNumeric = numericReps != null && !isNaN(numericReps) && numericReps > 0;
+
       const sets: SetEntry[] = Array.from({ length: targetSets }, () => ({
-        weight: planEx.target_weight
-          ? String(planEx.target_weight)
+        weight: ex.target_weight
+          ? String(ex.target_weight)
           : lastUsed.weight != null
           ? String(lastUsed.weight)
           : "",
-        reps: planEx.target_reps
-          ? String(planEx.target_reps)
+        reps: repsIsNumeric
+          ? String(numericReps)
           : lastUsed.reps != null
           ? String(lastUsed.reps)
           : "",
@@ -78,13 +86,14 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
         name: exerciseData?.name || slugToName(slug),
         tracking,
         targetSets,
-        targetReps: planEx.target_reps || 0,
-        targetWeight: planEx.target_weight || null,
+        targetReps: repsIsNumeric ? numericReps! : 0,
+        targetRepsLabel: typeof rawReps === "string" && !repsIsNumeric ? rawReps : null,
+        targetWeight: ex.target_weight || null,
         sets,
       };
     });
     setExerciseLogs(logs);
-  }, [plan, allExercises]);
+  }, [plan, template, allExercises]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -93,7 +102,7 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
     return () => clearInterval(interval);
   }, []);
 
-  if (!plan) return null;
+  if (!source) return null;
 
   const formatElapsed = (s: number) => {
     const m = Math.floor(s / 60);
@@ -168,7 +177,7 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
 
   const handleSave = async () => {
     setSaving(true);
-    const planSlug = pathToSlug(plan.path);
+    const planSlug = plan ? pathToSlug(plan.path) : null;
     const elapsedMin = Math.round((Date.now() - startTimeRef.current) / 60000);
     const finalDuration = duration ? Number(duration) : elapsedMin > 0 ? elapsedMin : undefined;
 
@@ -200,7 +209,7 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
       await api.sessions.create({
         date: new Date().toISOString(),
         exercises: sessionExercises,
-        plan: planSlug,
+        ...(planSlug && { plan: planSlug }),
         ...(finalDuration != null && { duration_minutes: finalDuration }),
         ...(rating > 0 && { rating }),
         ...(notes.trim() && { notes: notes.trim() }),
@@ -241,7 +250,7 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           <div className="bg-card border-l-2 border-blush p-4 space-y-4">
-            <h3 className="text-sm font-semibold">{plan.title}</h3>
+            <h3 className="text-sm font-semibold">{source.title}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-paper p-4 text-center">
                 <div className="text-2xl font-mono font-bold text-blush">{totalSetsCompleted}</div>
@@ -391,7 +400,7 @@ export default function SessionLoggerSheet({ plan, exercises: allExercises, onCl
           <div>
             <h2 className="text-xl font-bold">{currentLog.name}</h2>
             <p className="text-[10px] font-mono text-faded tracking-[0.15em] uppercase">
-              Target: {currentLog.targetSets}×{currentLog.targetReps}
+              Target: {currentLog.targetSets}×{currentLog.targetRepsLabel || currentLog.targetReps}
               {currentLog.targetWeight ? ` @ ${currentLog.targetWeight}kg` : ""}
             </p>
           </div>

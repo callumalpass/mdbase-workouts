@@ -47,13 +47,24 @@ chat.post("/message", async (c) => {
         systemPrompt: SYSTEM_PROMPT,
         model: "sonnet",
         maxTurns: 10,
+        includePartialMessages: true,
       };
 
       if (sessionId) {
         options.resume = sessionId;
       }
 
-      for await (const msg of query({ prompt: message, options })) {
+      // Use streaming input mode (async generator) for proper multi-turn
+      async function* userMessages() {
+        yield {
+          type: "user" as const,
+          message: { role: "user" as const, content: message },
+        };
+      }
+
+      let currentToolName: string | null = null;
+
+      for await (const msg of query({ prompt: userMessages(), options })) {
         if (msg.type === "system" && msg.subtype === "init") {
           await stream.writeSSE({
             event: "session",
@@ -61,14 +72,46 @@ chat.post("/message", async (c) => {
           });
         }
 
-        if (msg.type === "assistant" && msg.message?.content) {
-          for (const block of msg.message.content) {
-            if ("text" in block && block.text) {
-              await stream.writeSSE({
-                event: "text",
-                data: JSON.stringify(block.text),
-              });
-            }
+        // Stream text and tool events from partial messages
+        if (msg.type === "stream_event") {
+          const evt = msg.event;
+
+          // Text delta — stream it immediately
+          if (
+            evt.type === "content_block_delta" &&
+            evt.delta.type === "text_delta"
+          ) {
+            await stream.writeSSE({
+              event: "text",
+              data: JSON.stringify(evt.delta.text),
+            });
+          }
+
+          // Tool use started
+          if (
+            evt.type === "content_block_start" &&
+            evt.content_block.type === "tool_use"
+          ) {
+            currentToolName = evt.content_block.name;
+          }
+
+          // Tool input arriving — capture file path for display
+          if (
+            evt.type === "content_block_delta" &&
+            evt.delta.type === "input_json_delta" &&
+            currentToolName
+          ) {
+            // We'll emit the tool event when the block stops
+            // (input arrives incrementally so we wait for completion)
+          }
+
+          // Tool block finished — emit tool event with name
+          if (evt.type === "content_block_stop" && currentToolName) {
+            await stream.writeSSE({
+              event: "tool",
+              data: JSON.stringify({ tool: currentToolName }),
+            });
+            currentToolName = null;
           }
         }
 
