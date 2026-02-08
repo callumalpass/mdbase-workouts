@@ -3,7 +3,7 @@ name: plan-template
 description: A reusable workout template for quick-starting sessions
 
 match:
-  folder: plan-templates
+  path_glob: "plan-templates/**"
 
 fields:
   title:

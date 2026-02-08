@@ -26,6 +26,9 @@ Fields: exercise (link, required), reps, weight, duration_seconds, distance, log
 ## Wikilinks
 Cross-references use wikilinks: [[exercises/bench-press]] links to exercises/bench-press.md
 
+## Type definitions
+Type definitions live in _types/*.md. Each uses match.path_glob (e.g. path_glob: "plans/**") to bind types to folders. NEVER use match.folder — it is not a valid mdbase field and will be silently ignored.
+
 ## Guidelines
 - When asked about exercises, read from exercises/ directory
 - When creating plans, write valid frontmatter with type: plan

@@ -3,7 +3,7 @@ name: quick-log
 description: A quick single-exercise log entry
 
 match:
-  folder: quick-logs
+  path_glob: "quick-logs/**"
 
 fields:
   exercise:

@@ -3,7 +3,7 @@ name: exercise
 description: An exercise definition with tracking configuration
 
 match:
-  folder: exercises
+  path_glob: "exercises/**"
 
 fields:
   name:

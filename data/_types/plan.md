@@ -3,7 +3,7 @@ name: plan
 description: A scheduled workout plan
 
 match:
-  folder: plans
+  path_glob: "plans/**"
 
 fields:
   date:

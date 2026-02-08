@@ -3,7 +3,7 @@ name: session
 description: A completed workout session
 
 match:
-  folder: sessions
+  path_glob: "sessions/**"
 
 fields:
   date:
