@@ -116,6 +116,27 @@ export interface ExerciseHistory {
   entries: ExerciseHistoryEntry[];
 }
 
+export interface PR {
+  exercise: string;
+  type: "weight" | "e1rm";
+  value: number;
+  reps?: number;
+  date: string;
+}
+
+export interface StatsResponse {
+  streak: {
+    weekStreak: number;
+    thisWeekSessions: number;
+  };
+  prs: PR[];
+  volume: {
+    thisWeek: { sets: number; volume: number };
+    lastWeek: { sets: number; volume: number };
+    muscleGroups: Record<string, number>;
+  };
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;

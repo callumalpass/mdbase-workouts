@@ -2,21 +2,36 @@ import { useState } from "react";
 import { useSessions } from "../hooks/useSessions";
 import { useExercises } from "../hooks/useExercises";
 import { pathToSlug } from "../lib/utils";
+import { api } from "../lib/api";
 import SessionCard from "./SessionCard";
 import ExerciseCard from "./ExerciseCard";
 import ExerciseDetailView from "./ExerciseDetailView";
+import ConfirmDialog from "./ConfirmDialog";
 
 type View = "sessions" | "exercises";
 
 export default function HistoryTab() {
   const [view, setView] = useState<View>("sessions");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const { sessions, loading: sessionsLoading, hasMore, loadMore } = useSessions();
+  const { sessions, loading: sessionsLoading, hasMore, loadMore, refresh } = useSessions();
   const { exercises, loading: exercisesLoading, search, setSearch } = useExercises();
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   if (selectedSlug) {
     return <ExerciseDetailView slug={selectedSlug} onBack={() => setSelectedSlug(null)} />;
   }
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingPath) return;
+    const id = pathToSlug(deletingPath);
+    try {
+      await api.sessions.delete(id);
+      refresh();
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+    }
+    setDeletingPath(null);
+  };
 
   return (
     <div className="p-5 pb-20 space-y-6">
@@ -51,7 +66,11 @@ export default function HistoryTab() {
           ) : (
             <>
               {sessions.map((s) => (
-                <SessionCard key={s.path} session={s} />
+                <SessionCard
+                  key={s.path}
+                  session={s}
+                  onDelete={(path) => setDeletingPath(path)}
+                />
               ))}
               {hasMore && (
                 <button
@@ -93,6 +112,15 @@ export default function HistoryTab() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deletingPath}
+        title="Delete Session"
+        message="This will permanently delete this workout session. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeletingPath(null)}
+      />
     </div>
   );
 }

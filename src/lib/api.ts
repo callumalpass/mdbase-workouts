@@ -37,6 +37,8 @@ export const api = {
       request<any>("/sessions", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: any) =>
       request<any>(`/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }),
   },
   plans: {
     list: (status?: string) =>
@@ -54,6 +56,11 @@ export const api = {
       request<any>("/plan-templates", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: any) =>
       request<any>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/plan-templates/${id}`, { method: "DELETE" }),
+  },
+  stats: {
+    get: () => request<any>("/stats"),
   },
   today: () => request<any>("/today"),
   settings: {

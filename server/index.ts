@@ -14,6 +14,7 @@ import quickLogs from "./routes/quick-logs.js";
 import today from "./routes/today.js";
 import chat from "./routes/chat.js";
 import settings from "./routes/settings.js";
+import stats from "./routes/stats.js";
 
 const app = new Hono();
 
@@ -49,6 +50,7 @@ async function start() {
   app.route("/api/today", today);
   app.route("/api/chat", chat);
   app.route("/api/settings", settings);
+  app.route("/api/stats", stats);
 
   // In production, serve static files from dist/
   if (process.env.NODE_ENV === "production") {
