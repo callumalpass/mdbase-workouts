@@ -137,6 +137,11 @@ export interface StatsResponse {
   };
 }
 
+export interface LastSessionData {
+  date: string;
+  sets: SetData[];
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;

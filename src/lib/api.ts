@@ -21,6 +21,11 @@ export const api = {
       request<any>("/exercises", { method: "POST", body: JSON.stringify(data) }),
     update: (slug: string, data: any) =>
       request<any>(`/exercises/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
+    lastSets: (slugs: string[]) =>
+      request<Record<string, { date: string; sets: any[] }>>("/exercises/last-sets", {
+        method: "POST",
+        body: JSON.stringify({ slugs }),
+      }),
   },
   quickLogs: {
     list: (limit = 50) => request<any[]>(`/quick-logs?limit=${limit}`),

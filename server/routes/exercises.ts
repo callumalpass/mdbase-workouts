@@ -20,6 +20,38 @@ exercises.get("/", async (c) => {
   );
 });
 
+// Batch fetch last session sets for multiple exercises
+exercises.post("/last-sets", async (c) => {
+  const { slugs } = await c.req.json<{ slugs: string[] }>();
+  if (!Array.isArray(slugs) || slugs.length === 0) return c.json({});
+
+  const db = c.get("db");
+  const sessionsResult = await db.query({
+    types: ["session"],
+    order_by: [{ field: "date", direction: "desc" }],
+    include_body: false,
+  });
+  if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
+
+  const wikilinks = new Map(slugs.map((s) => [`[[exercises/${s}]]`, s]));
+  const remaining = new Set(slugs);
+  const result: Record<string, { date: string; sets: any[] }> = {};
+
+  for (const r of sessionsResult.results) {
+    if (remaining.size === 0) break;
+    const session = r.frontmatter as any;
+    for (const ex of session.exercises || []) {
+      const slug = wikilinks.get(ex.exercise);
+      if (slug && remaining.has(slug)) {
+        result[slug] = { date: session.date, sets: ex.sets || [] };
+        remaining.delete(slug);
+      }
+    }
+  }
+
+  return c.json(result);
+});
+
 // Get exercise history with stats
 exercises.get("/:slug/history", async (c) => {
   const slug = c.req.param("slug");

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import type { Plan, PlanTemplate, Exercise, TrackingType } from "../lib/types";
+import type { Plan, PlanTemplate, Exercise, TrackingType, LastSessionData, SetData } from "../lib/types";
 import { api } from "../lib/api";
 import { parseWikilink, slugToName, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
-import { useLastUsed } from "../hooks/useLocalStorage";
+import { useLocalStorage, useLastUsed } from "../hooks/useLocalStorage";
 import SuccessStamp from "./SuccessStamp";
+import CountdownTimer from "./CountdownTimer";
 
 interface SetEntry {
   weight: string;
@@ -12,6 +13,7 @@ interface SetEntry {
   duration: string;
   distance: string;
   done: boolean;
+  weightTouched: boolean;
 }
 
 interface ExerciseLog {
@@ -34,7 +36,7 @@ interface Props {
 }
 
 function emptySet(): SetEntry {
-  return { weight: "", reps: "", duration: "", distance: "", done: false };
+  return { weight: "", reps: "", duration: "", distance: "", done: false, weightTouched: false };
 }
 
 export default function SessionLoggerSheet({ plan, template, exercises: allExercises, onClose, onSaved }: Props) {
@@ -51,6 +53,12 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const startTimeRef = useRef(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const { getLastUsed, saveLastUsed } = useLastUsed();
+  const [restDuration, setRestDuration] = useLocalStorage("workout-rest-duration", 90);
+  const [restTimerKey, setRestTimerKey] = useState(0);
+  const [restTimerActive, setRestTimerActive] = useState(false);
+  const [showRestPicker, setShowRestPicker] = useState(false);
+  const restDurations = [30, 60, 90, 120, 180];
+  const [lastSessions, setLastSessions] = useState<Record<string, LastSessionData>>({});
 
   useEffect(() => {
     if (!source) return;
@@ -80,6 +88,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         duration: "",
         distance: "",
         done: false,
+        weightTouched: false,
       }));
 
       return {
@@ -96,6 +105,13 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
     setExerciseLogs(logs);
   }, [plan, template, allExercises]);
 
+  // Fetch last session data once exercise logs are ready
+  useEffect(() => {
+    if (exerciseLogs.length === 0) return;
+    const slugs = exerciseLogs.map((l) => l.slug);
+    api.exercises.lastSets(slugs).then(setLastSessions).catch(() => {});
+  }, [exerciseLogs.length]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -111,6 +127,27 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  const formatLastSets = (sets: SetData[]): string => {
+    if (!sets.length) return "";
+    // Group consecutive same-weight sets
+    const groups: { weight: number | undefined; reps: number[] }[] = [];
+    for (const s of sets) {
+      const last = groups[groups.length - 1];
+      if (last && last.weight === s.weight) {
+        last.reps.push(s.reps ?? 0);
+      } else {
+        groups.push({ weight: s.weight, reps: [s.reps ?? 0] });
+      }
+    }
+    return groups
+      .map((g) =>
+        g.weight != null
+          ? `${g.weight}kg × ${g.reps.join(", ")}`
+          : g.reps.join(", ")
+      )
+      .join(" / ");
+  };
+
   const currentLog = exerciseLogs[activeIndex];
 
   const handleSetChange = (
@@ -120,16 +157,23 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
     value: string | boolean
   ) => {
     setExerciseLogs((prev) =>
-      prev.map((log, ei) =>
-        ei === exerciseIdx
-          ? {
-              ...log,
-              sets: log.sets.map((s, si) =>
-                si === setIdx ? { ...s, [field]: value } : s
-              ),
-            }
-          : log
-      )
+      prev.map((log, ei) => {
+        if (ei !== exerciseIdx) return log;
+        let sets = log.sets.map((s, si) =>
+          si === setIdx ? { ...s, [field]: value } : s
+        );
+        // Cascade weight to subsequent untouched, undone sets
+        if (field === "weight") {
+          sets = sets.map((s, si) =>
+            si === setIdx
+              ? { ...s, weightTouched: true }
+              : si > setIdx && !s.weightTouched && !s.done
+              ? { ...s, weight: value as string }
+              : s
+          );
+        }
+        return { ...log, sets };
+      })
     );
   };
 
@@ -145,6 +189,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
                   ...emptySet(),
                   weight: log.sets[log.sets.length - 1]?.weight || "",
                   reps: log.sets[log.sets.length - 1]?.reps || "",
+                  weightTouched: false,
                 },
               ],
             }
@@ -166,8 +211,13 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const handleToggleDone = (exerciseIdx: number, setIdx: number) => {
     const log = exerciseLogs[exerciseIdx];
     const set = log.sets[setIdx];
+    const marking = !set.done;
     haptics.heavy();
-    handleSetChange(exerciseIdx, setIdx, "done", !set.done);
+    handleSetChange(exerciseIdx, setIdx, "done", marking);
+    if (marking) {
+      setRestTimerActive(true);
+      setRestTimerKey((k) => k + 1);
+    }
   };
 
   const handleMoveExercise = (index: number, direction: -1 | 1) => {
@@ -361,17 +411,25 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           >
             Cancel
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setReordering(true)}
               className="text-[11px] font-mono text-faded uppercase tracking-wider active:text-ink py-2 px-2"
             >
               Reorder
             </button>
+            <button
+              onClick={() => setShowRestPicker((v) => !v)}
+              className={`text-[11px] font-mono uppercase tracking-wider py-2 px-2 ${
+                showRestPicker ? "text-ocean" : "text-faded active:text-ink"
+              }`}
+            >
+              Rest {restDuration}s
+            </button>
             <span className="text-sm font-mono font-medium text-blush">{formatElapsed(elapsed)}</span>
           </div>
           <button
-            onClick={() => setShowFinish(true)}
+            onClick={() => { setRestTimerActive(false); setShowFinish(true); }}
             className="text-sm text-blush font-semibold active:opacity-70 py-2 px-1 -mr-1"
           >
             Finish
@@ -387,6 +445,25 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           />
         </div>
       </div>
+
+      {/* Rest duration picker */}
+      {showRestPicker && (
+        <div className="flex gap-1 px-5 py-2 border-b border-rule bg-card">
+          {restDurations.map((d) => (
+            <button
+              key={d}
+              onClick={() => { setRestDuration(d); setShowRestPicker(false); }}
+              className={`flex-1 py-2 text-xs font-mono transition-colors ${
+                d === restDuration
+                  ? "bg-ocean/15 text-ocean border border-ocean/30"
+                  : "border border-rule text-faded active:border-ocean/40"
+              }`}
+            >
+              {d}s
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Exercise tabs */}
       <div className="flex overflow-x-auto gap-1 px-5 py-2 border-b border-rule bg-card">
@@ -424,6 +501,11 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
             <h2 className="text-xl font-bold">{currentLog.name}</h2>
+            {lastSessions[currentLog.slug] && (
+              <p className="text-[11px] font-mono text-ocean tracking-[0.15em]">
+                Last: {formatLastSets(lastSessions[currentLog.slug].sets)}
+              </p>
+            )}
             <p className="text-[11px] font-mono text-faded tracking-[0.15em] uppercase">
               Target: {currentLog.targetSets}×{currentLog.targetRepsLabel || currentLog.targetReps}
               {currentLog.targetWeight ? ` @ ${currentLog.targetWeight}kg` : ""}
@@ -634,6 +716,15 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         </div>
       )}
 
+      {restTimerActive && (
+        <CountdownTimer
+          key={restTimerKey}
+          duration={restDuration}
+          onComplete={() => setRestTimerActive(false)}
+          onSkip={() => setRestTimerActive(false)}
+        />
+      )}
+
       <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border-t border-rule bg-card flex gap-2">
         <button
           onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
@@ -653,7 +744,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           </button>
         ) : (
           <button
-            onClick={() => setShowFinish(true)}
+            onClick={() => { setRestTimerActive(false); setShowFinish(true); }}
             className="flex-1 py-3 bg-blush text-white text-sm font-medium
               active:scale-[0.97] transition-transform duration-75"
           >
