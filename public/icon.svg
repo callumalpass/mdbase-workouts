@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#ECE8E1"/>
+  <g transform="translate(256,256)">
+    <!-- barbell bar -->
+    <rect x="-140" y="-8" width="280" height="16" rx="8" fill="#1C1917"/>
+    <!-- left weight plates -->
+    <rect x="-130" y="-70" width="32" height="140" rx="8" fill="#E05170"/>
+    <rect x="-155" y="-55" width="20" height="110" rx="6" fill="#3356D0"/>
+    <!-- right weight plates -->
+    <rect x="98" y="-70" width="32" height="140" rx="8" fill="#E05170"/>
+    <rect x="135" y="-55" width="20" height="110" rx="6" fill="#3356D0"/>
+  </g>
+</svg>
