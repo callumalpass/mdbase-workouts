@@ -34,13 +34,13 @@ export default function App() {
         </svg>
       </button>
       <SettingsSheet open={showSettings} onClose={() => setShowSettings(false)} />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto">
         {tab === "today" && <TodayTab />}
         {tab === "calendar" && <CalendarTab />}
         {tab === "history" && <HistoryTab />}
         {tab === "chat" && <ChatTab />}
       </main>
-      <nav className="flex border-t border-rule bg-card pb-[env(safe-area-inset-bottom)] relative">
+      <nav className="shrink-0 flex border-t border-rule bg-card pb-[env(safe-area-inset-bottom)] relative">
         <span
           className="absolute top-0 h-[2px] bg-blush transition-all duration-200 ease-out"
           style={{ left: `calc(${tabIndex * 25}% + 1rem)`, width: "calc(25% - 2rem)" }}
