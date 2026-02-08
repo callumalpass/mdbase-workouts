@@ -20,7 +20,7 @@ export default function ExerciseCard({ exercise, onClick }: Props) {
     >
       <div className="flex items-center justify-between mb-1.5">
         <h3 className="text-sm font-semibold">{exercise.name}</h3>
-        <span className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded">
+        <span className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded">
           {exercise.equipment}
         </span>
       </div>
@@ -29,13 +29,13 @@ export default function ExerciseCard({ exercise, onClick }: Props) {
           {exercise.muscle_groups?.map((g) => (
             <span
               key={g}
-              className="text-[9px] font-mono px-1.5 py-0.5 bg-paper text-faded uppercase tracking-wider"
+              className="text-[11px] font-mono px-1.5 py-0.5 bg-paper text-faded uppercase tracking-wider"
             >
               {g}
             </span>
           ))}
         </div>
-        <span className="text-[9px] font-mono text-blush ml-auto tracking-wider">
+        <span className="text-[11px] font-mono text-blush ml-auto tracking-wider">
           {trackingLabels[exercise.tracking] || exercise.tracking}
         </span>
       </div>

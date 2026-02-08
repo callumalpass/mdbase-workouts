@@ -3,6 +3,7 @@ import { useExerciseDetail } from "../hooks/useExerciseDetail";
 import { formatDate, formatSet, formatTime } from "../lib/utils";
 import { api } from "../lib/api";
 import type { TrackingType, ExerciseHistoryEntry } from "../lib/types";
+import ProgressChart from "./ProgressChart";
 
 interface Props {
   slug: string;
@@ -122,7 +123,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         {items.map((item) => (
           <div key={item.label} className="bg-card border-l-2 border-blush p-4">
             <div className="text-xl font-mono text-ink">{item.value}</div>
-            <div className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
+            <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
               {item.label}
             </div>
           </div>
@@ -140,7 +141,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold">{formatDate(entry.date)}</span>
           <div className="flex items-center gap-2">
-            <span className={`text-[9px] font-mono uppercase tracking-[0.15em] ${badgeColor}`}>
+            <span className={`text-[11px] font-mono uppercase tracking-[0.15em] ${badgeColor}`}>
               {entry.source}
             </span>
             <span className="text-[10px] font-mono text-faded">
@@ -164,10 +165,10 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         </button>
         <h1 className="text-4xl font-bold tracking-tight">{exercise.name}</h1>
         <div className="flex items-center gap-2 mt-2">
-          <span className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded px-1.5 py-0.5 bg-paper">
+          <span className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded px-1.5 py-0.5 bg-paper">
             {exercise.equipment}
           </span>
-          <span className="text-[9px] font-mono uppercase tracking-[0.15em] text-blush px-1.5 py-0.5 bg-paper">
+          <span className="text-[11px] font-mono uppercase tracking-[0.15em] text-blush px-1.5 py-0.5 bg-paper">
             {trackingLabels[exercise.tracking] || exercise.tracking}
           </span>
         </div>
@@ -176,7 +177,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
             {exercise.muscle_groups.map((g: string) => (
               <span
                 key={g}
-                className="text-[9px] font-mono px-1.5 py-0.5 bg-paper text-faded uppercase tracking-wider"
+                className="text-[11px] font-mono px-1.5 py-0.5 bg-paper text-faded uppercase tracking-wider"
               >
                 {g}
               </span>
@@ -191,13 +192,21 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         {renderStats()}
       </div>
 
+      {/* Progress Chart */}
+      {entries.length > 0 && (
+        <div>
+          <h2 className="text-xs font-mono uppercase tracking-[0.15em] text-faded mb-3">Progress</h2>
+          <ProgressChart entries={entries} tracking={exercise.tracking} />
+        </div>
+      )}
+
       {/* Edit Section */}
       <div>
         <h2 className="text-xs font-mono uppercase tracking-[0.15em] text-faded mb-3">Details</h2>
         {editing ? (
           <div className="space-y-3">
             <div>
-              <label className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
+              <label className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
                 Name
               </label>
               <input
@@ -210,7 +219,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
             </div>
 
             <div>
-              <label className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
+              <label className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
                 Equipment
               </label>
               <div className="flex flex-wrap gap-1">
@@ -218,7 +227,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
                   <button
                     key={eq}
                     onClick={() => setEditEquipment(eq)}
-                    className={`text-[9px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
+                    className={`text-[11px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
                       editEquipment === eq
                         ? "bg-blush text-white"
                         : "bg-paper text-faded border border-rule"
@@ -231,7 +240,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
             </div>
 
             <div>
-              <label className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
+              <label className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
                 Tracking
               </label>
               <div className="flex flex-wrap gap-1">
@@ -239,7 +248,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
                   <button
                     key={opt.value}
                     onClick={() => setEditTracking(opt.value)}
-                    className={`text-[9px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
+                    className={`text-[11px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
                       editTracking === opt.value
                         ? "bg-blush text-white"
                         : "bg-paper text-faded border border-rule"
@@ -252,7 +261,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
             </div>
 
             <div>
-              <label className="text-[9px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
+              <label className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded mb-1 block">
                 Muscle groups (comma-separated)
               </label>
               <input

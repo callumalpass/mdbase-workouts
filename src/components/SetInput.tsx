@@ -27,7 +27,7 @@ export default function SetInput({
     "w-full px-3 py-3 bg-paper border border-rule text-sm font-mono text-ink text-center" +
     " focus:outline-none focus:border-blush transition-colors";
 
-  const labelClass = "text-[9px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block";
+  const labelClass = "text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block";
 
   if (tracking === "weight_reps") {
     return (

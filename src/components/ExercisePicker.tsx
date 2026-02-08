@@ -49,7 +49,7 @@ export default function ExercisePicker({ onSelect, recentSlugs = [] }: Props) {
                   {ex.muscle_groups?.join(" · ")}
                 </div>
               </div>
-              <span className="text-[9px] font-mono uppercase tracking-[0.15em] text-blush shrink-0">
+              <span className="text-[11px] font-mono uppercase tracking-[0.15em] text-blush shrink-0">
                 {ex.tracking?.replace("_", " ")}
               </span>
             </button>

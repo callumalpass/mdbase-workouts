@@ -44,6 +44,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const [saving, setSaving] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [duration, setDuration] = useState("");
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState("");
@@ -169,6 +170,22 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
     handleSetChange(exerciseIdx, setIdx, "done", !set.done);
   };
 
+  const handleMoveExercise = (index: number, direction: -1 | 1) => {
+    const next = index + direction;
+    if (next < 0 || next >= exerciseLogs.length) return;
+    setExerciseLogs((prev) => {
+      const copy = [...prev];
+      [copy[index], copy[next]] = [copy[next], copy[index]];
+      return copy;
+    });
+    // Update activeIndex if the current exercise moved
+    if (index === activeIndex) {
+      setActiveIndex(next);
+    } else if (next === activeIndex) {
+      setActiveIndex(index);
+    }
+  };
+
   const totalSetsCompleted = exerciseLogs.reduce(
     (sum, log) => sum + log.sets.filter((s) => s.done).length,
     0
@@ -230,7 +247,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
   const inputClass =
     "w-full px-2 py-2.5 bg-paper border border-rule text-sm font-mono text-ink text-center" +
-    " focus:outline-none focus:border-blush transition-colors";
+    " focus:outline-none focus:border-blush focus:ring-2 focus:ring-blush/20 transition-colors";
 
   // Finish screen
   if (showFinish) {
@@ -254,13 +271,13 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-paper p-4 text-center">
                 <div className="text-2xl font-mono font-bold text-blush">{totalSetsCompleted}</div>
-                <div className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
+                <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
                   Sets Done
                 </div>
               </div>
               <div className="bg-paper p-4 text-center">
                 <div className="text-2xl font-mono font-bold text-blush">{formatElapsed(elapsed)}</div>
-                <div className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
+                <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
                   Duration
                 </div>
               </div>
@@ -268,7 +285,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           </div>
 
           <div>
-            <label className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">
+            <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">
               Duration (min) — blank uses timer
             </label>
             <input
@@ -283,7 +300,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           </div>
 
           <div>
-            <label className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mb-2 block">Rating</label>
+            <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-2 block">Rating</label>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
@@ -302,7 +319,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           </div>
 
           <div>
-            <label className="text-[9px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">Notes</label>
+            <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -340,14 +357,22 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={onClose}
-            className="text-sm text-faded active:text-ink"
+            className="text-sm text-faded active:text-ink py-2 px-1 -ml-1"
           >
             Cancel
           </button>
-          <span className="text-sm font-mono font-medium text-blush">{formatElapsed(elapsed)}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setReordering(true)}
+              className="text-[11px] font-mono text-faded uppercase tracking-wider active:text-ink py-2 px-2"
+            >
+              Reorder
+            </button>
+            <span className="text-sm font-mono font-medium text-blush">{formatElapsed(elapsed)}</span>
+          </div>
           <button
             onClick={() => setShowFinish(true)}
-            className="text-sm text-blush font-semibold active:opacity-70"
+            className="text-sm text-blush font-semibold active:opacity-70 py-2 px-1 -mr-1"
           >
             Finish
           </button>
@@ -373,7 +398,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
             <button
               key={log.slug}
               onClick={() => setActiveIndex(i)}
-              className={`shrink-0 px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+              className={`shrink-0 px-3 py-3 text-xs font-medium transition-colors whitespace-nowrap ${
                 i === activeIndex
                   ? "bg-blush text-white"
                   : allDone
@@ -383,7 +408,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
                   : "bg-paper text-faded border border-rule"
               }`}
             >
-              {log.name.length > 14 ? log.name.slice(0, 12) + "…" : log.name}
+              {log.name}
               {done > 0 && i !== activeIndex && (
                 <span className="ml-1 opacity-70">
                   {done}/{total}
@@ -399,7 +424,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
             <h2 className="text-xl font-bold">{currentLog.name}</h2>
-            <p className="text-[10px] font-mono text-faded tracking-[0.15em] uppercase">
+            <p className="text-[11px] font-mono text-faded tracking-[0.15em] uppercase">
               Target: {currentLog.targetSets}×{currentLog.targetRepsLabel || currentLog.targetReps}
               {currentLog.targetWeight ? ` @ ${currentLog.targetWeight}kg` : ""}
             </p>
@@ -408,34 +433,34 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
           <div className="space-y-2">
             {/* Column headers */}
             <div className="grid items-center gap-2" style={{
-              gridTemplateColumns: "2rem 1fr 1fr 2.5rem",
+              gridTemplateColumns: "2rem 1fr 1fr 2.75rem",
             }}>
-              <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">Set</span>
+              <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">Set</span>
               {currentLog.tracking === "weight_reps" && (
                 <>
-                  <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">KG</span>
-                  <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">Reps</span>
+                  <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">KG</span>
+                  <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">Reps</span>
                 </>
               )}
               {currentLog.tracking === "reps_only" && (
                 <>
-                  <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">Reps</span>
+                  <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">Reps</span>
                   <span />
                 </>
               )}
               {currentLog.tracking === "timed" && (
                 <>
-                  <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">Sec</span>
+                  <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">Sec</span>
                   <span />
                 </>
               )}
               {currentLog.tracking === "distance" && (
                 <>
-                  <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">KM</span>
+                  <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">KM</span>
                   <span />
                 </>
               )}
-              <span className="text-[9px] font-mono text-faded text-center uppercase tracking-wider">OK</span>
+              <span className="text-[11px] font-mono text-faded text-center uppercase tracking-wider">OK</span>
             </div>
 
             {currentLog.sets.map((set, si) => (
@@ -445,7 +470,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
                   set.done ? "opacity-50" : ""
                 }`}
                 style={{
-                  gridTemplateColumns: "2rem 1fr 1fr 2.5rem",
+                  gridTemplateColumns: "2rem 1fr 1fr 2.75rem",
                 }}
               >
                 <span className="text-xs font-mono text-faded text-center font-medium">
@@ -524,7 +549,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
                 <button
                   onClick={() => handleToggleDone(activeIndex, si)}
-                  className={`w-8 h-8 border flex items-center justify-center text-sm transition-colors mx-auto ${
+                  className={`w-11 h-11 border flex items-center justify-center text-sm transition-colors mx-auto ${
                     set.done
                       ? "bg-sage/15 border-sage text-sage"
                       : "border-rule text-rule active:border-blush/40"
@@ -553,6 +578,58 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
                 Remove
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reorder overlay */}
+      {reordering && (
+        <div className="absolute inset-0 z-10 bg-paper/95 flex flex-col">
+          <div className="px-5 py-3 border-b border-rule flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Reorder Exercises</h3>
+            <button
+              onClick={() => setReordering(false)}
+              className="text-sm text-blush font-semibold active:opacity-70"
+            >
+              Done
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5 space-y-2">
+            {exerciseLogs.map((log, i) => {
+              const done = log.sets.filter((s) => s.done).length;
+              const total = log.sets.length;
+              return (
+                <div
+                  key={log.slug}
+                  className={`flex items-center gap-3 bg-card border-l-2 p-3 ${
+                    i === activeIndex ? "border-blush" : "border-rule"
+                  }`}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => handleMoveExercise(i, -1)}
+                      disabled={i === 0}
+                      className="text-faded text-sm font-mono leading-none disabled:opacity-20 active:text-ink px-1"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => handleMoveExercise(i, 1)}
+                      disabled={i === exerciseLogs.length - 1}
+                      className="text-faded text-sm font-mono leading-none disabled:opacity-20 active:text-ink px-1"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{log.name}</div>
+                    <div className="text-[11px] font-mono text-faded">
+                      {done}/{total} sets done
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

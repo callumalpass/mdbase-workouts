@@ -1,12 +1,13 @@
-import { useState, useCallback } from "react";
-import type { Exercise } from "../lib/types";
+import { useState, useCallback, useEffect } from "react";
+import type { Exercise, PlanTemplate } from "../lib/types";
 import { api } from "../lib/api";
-import { pathToSlug } from "../lib/utils";
+import { parseWikilink, pathToSlug } from "../lib/utils";
+import { useExercises } from "../hooks/useExercises";
 import { useDragToDismiss } from "../hooks/useDragToDismiss";
 import ExercisePicker from "./ExercisePicker";
 import SuccessStamp from "./SuccessStamp";
 
-interface PlanExerciseEntry {
+interface TemplateExerciseEntry {
   exercise: Exercise;
   target_sets: string;
   target_reps: string;
@@ -15,24 +16,48 @@ interface PlanExerciseEntry {
 
 interface Props {
   open: boolean;
+  template: PlanTemplate | null;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }
 
 type Step = "details" | "exercises" | "picking";
 
-export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
+export default function TemplateEditorSheet({ open, template, onClose, onSaved }: Props) {
+  const { allExercises } = useExercises();
   const [step, setStep] = useState<Step>("details");
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [exercises, setExercises] = useState<PlanExerciseEntry[]>([]);
+  const [exercises, setExercises] = useState<TemplateExerciseEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
+
+  const isEditing = !!template;
+
+  // Populate form when editing
+  useEffect(() => {
+    if (template && allExercises.length > 0) {
+      setTitle(template.title);
+      setExercises(
+        (template.exercises || []).map((ex) => {
+          const slug = parseWikilink(ex.exercise);
+          const exerciseData = allExercises.find((e) => pathToSlug(e.path) === slug);
+          return {
+            exercise: exerciseData || { path: `exercises/${slug}.md`, name: slug, muscle_groups: [], equipment: "", tracking: "weight_reps" as const },
+            target_sets: String(ex.target_sets || "3"),
+            target_reps: String(ex.target_reps || ""),
+            target_weight: ex.target_weight ? String(ex.target_weight) : "",
+          };
+        })
+      );
+    } else if (!template) {
+      setTitle("");
+      setExercises([]);
+    }
+  }, [template, allExercises]);
 
   const handleClose = useCallback(() => {
     setStep("details");
     setTitle("");
-    setDate(new Date().toISOString().slice(0, 10));
     setExercises([]);
     onClose();
   }, [onClose]);
@@ -77,19 +102,24 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
     if (!title.trim() || exercises.length === 0) return;
     setSaving(true);
     try {
-      await api.plans.create({
-        date,
+      const payload = {
         title: title.trim(),
         exercises: exercises.map((e) => ({
           exercise: pathToSlug(e.exercise.path),
           ...(e.target_sets && { target_sets: Number(e.target_sets) }),
-          ...(e.target_reps && { target_reps: Number(e.target_reps) }),
+          ...(e.target_reps && { target_reps: e.target_reps }),
           ...(e.target_weight && { target_weight: Number(e.target_weight) }),
         })),
-      });
+      };
+
+      if (isEditing) {
+        await api.planTemplates.update(pathToSlug(template!.path), payload);
+      } else {
+        await api.planTemplates.create(payload);
+      }
       setShowStamp(true);
     } catch (err) {
-      console.error("Failed to create plan:", err);
+      console.error("Failed to save template:", err);
     } finally {
       setSaving(false);
     }
@@ -98,29 +128,29 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const handleStampDone = () => {
     setShowStamp(false);
     handleClose();
-    onCreated();
+    onSaved();
   };
 
   const inputClass =
     "w-full px-4 py-3 bg-paper border border-rule text-sm" +
-    " placeholder:text-faded/50 placeholder:italic focus:outline-none focus:border-blush transition-colors";
+    " placeholder:text-faded/50 placeholder:italic focus:outline-none focus:border-ocean transition-colors";
 
   const smallInputClass =
     "w-full px-2 py-2.5 bg-paper border border-rule text-sm font-mono text-ink text-center" +
-    " focus:outline-none focus:border-blush transition-colors";
+    " focus:outline-none focus:border-ocean transition-colors";
 
   const canProceedToExercises = title.trim().length > 0;
   const canSave = title.trim().length > 0 && exercises.length > 0;
 
   return (
     <>
-      {showStamp && <SuccessStamp text="CREATED" onDone={handleStampDone} />}
+      {showStamp && <SuccessStamp text={isEditing ? "SAVED" : "CREATED"} onDone={handleStampDone} />}
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div className="absolute inset-0 bg-ink/30" onClick={handleClose} />
 
           <div
-            className="relative w-full max-w-lg bg-paper border-t-2 border-blush p-5 pb-8
+            className="relative w-full max-w-lg bg-paper border-t-2 border-ocean p-5 pb-8
               animate-[slideUp_0.2s_ease-out] max-h-[90dvh] overflow-y-auto"
             style={dragStyle}
           >
@@ -130,19 +160,21 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
             <div className="flex items-center gap-2 mb-5">
               <div
                 className={`h-[2px] flex-1 transition-colors ${
-                  step === "details" ? "bg-blush" : "bg-rule"
+                  step === "details" ? "bg-ocean" : "bg-rule"
                 }`}
               />
               <div
                 className={`h-[2px] flex-1 transition-colors ${
-                  step === "exercises" || step === "picking" ? "bg-blush" : "bg-rule"
+                  step === "exercises" || step === "picking" ? "bg-ocean" : "bg-rule"
                 }`}
               />
             </div>
 
             {step === "details" && (
               <>
-                <h2 className="text-lg font-semibold mb-4">New Plan</h2>
+                <h2 className="text-lg font-semibold mb-4">
+                  {isEditing ? "Edit Template" : "New Template"}
+                </h2>
 
                 <div className="space-y-3">
                   <div>
@@ -153,16 +185,6 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       autoFocus
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">Date</label>
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
                       className={inputClass}
                     />
                   </div>
@@ -179,7 +201,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   <button
                     onClick={() => setStep(exercises.length > 0 ? "exercises" : "picking")}
                     disabled={!canProceedToExercises}
-                    className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                    className="flex-1 py-3 bg-ocean text-white text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {exercises.length > 0 ? "Edit Exercises" : "Add Exercises"}
@@ -195,7 +217,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   {exercises.length > 0 && (
                     <button
                       onClick={() => setStep("exercises")}
-                      className="text-xs font-mono text-blush tracking-wider"
+                      className="text-xs font-mono text-ocean tracking-wider"
                     >
                       Done ({exercises.length})
                     </button>
@@ -219,7 +241,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                     <p className="text-sm italic text-faded mb-2">No exercises yet</p>
                     <button
                       onClick={() => setStep("picking")}
-                      className="text-sm text-blush font-medium"
+                      className="text-sm text-ocean font-medium"
                     >
                       Add your first exercise
                     </button>
@@ -283,8 +305,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                           <div>
                             <label className="text-[11px] font-mono text-faded uppercase tracking-wider mb-0.5 block">Reps</label>
                             <input
-                              type="number"
-                              inputMode="numeric"
+                              type="text"
                               value={entry.target_reps}
                               onChange={(e) =>
                                 handleUpdateExercise(index, "target_reps", e.target.value)
@@ -336,10 +357,10 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   <button
                     onClick={handleSave}
                     disabled={!canSave || saving}
-                    className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                    className="flex-1 py-3 bg-ocean text-white text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
-                    {saving ? "Creating..." : "Create Plan"}
+                    {saving ? "Saving..." : isEditing ? "Save Template" : "Create Template"}
                   </button>
                 </div>
               </>

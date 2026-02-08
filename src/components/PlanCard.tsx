@@ -18,7 +18,7 @@ export default function PlanCard({ plan, onStartWorkout }: Props) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">{plan.title}</h3>
         <span
-          className={`text-[9px] font-mono uppercase tracking-[0.2em] px-2 py-0.5 border ${
+          className={`text-[11px] font-mono uppercase tracking-[0.2em] px-2 py-0.5 border ${
             statusStyles[plan.status] || "border-rule text-faded"
           }`}
         >

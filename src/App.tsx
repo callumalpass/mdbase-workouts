@@ -25,7 +25,7 @@ export default function App() {
     <div className="flex flex-col h-[100dvh]">
       <button
         onClick={() => setShowSettings(true)}
-        className="fixed top-3 right-3 z-30 w-9 h-9 flex items-center justify-center
+        className="fixed top-3 right-3 z-30 w-11 h-11 flex items-center justify-center
           text-faded active:text-ink transition-colors"
         aria-label="Settings"
       >

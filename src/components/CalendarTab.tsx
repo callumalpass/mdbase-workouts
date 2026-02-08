@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Plan, QuickLog, Session } from "../lib/types";
 import { useExercises } from "../hooks/useExercises";
-import { formatSet, formatTime, parseWikilink, slugToName } from "../lib/utils";
+import { formatSet, formatTime, parseWikilink, pathToSlug, slugToName } from "../lib/utils";
 import PlanCard from "./PlanCard";
 import SessionCard from "./SessionCard";
 import SessionLoggerSheet from "./SessionLoggerSheet";
+import ConfirmDialog from "./ConfirmDialog";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -42,6 +43,7 @@ export default function CalendarTab() {
   const [quickLogs, setQuickLogs] = useState<QuickLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const { allExercises } = useExercises();
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -93,6 +95,7 @@ export default function CalendarTab() {
   const plansByDay = useMemo(() => {
     const grouped: Record<string, Plan[]> = {};
     for (const plan of plans) {
+      if (!plan.date) continue;
       const key = keyFromDateLike(plan.date);
       grouped[key] = grouped[key] || [];
       grouped[key].push(plan);
@@ -145,7 +148,7 @@ export default function CalendarTab() {
             onClick={() =>
               setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
             }
-            className="px-3 py-1.5 text-xs font-mono text-faded uppercase tracking-wider
+            className="px-4 py-2.5 text-xs font-mono text-faded uppercase tracking-wider
               border border-rule active:bg-paper transition-colors"
           >
             Prev
@@ -155,7 +158,7 @@ export default function CalendarTab() {
             onClick={() =>
               setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
             }
-            className="px-3 py-1.5 text-xs font-mono text-faded uppercase tracking-wider
+            className="px-4 py-2.5 text-xs font-mono text-faded uppercase tracking-wider
               border border-rule active:bg-paper transition-colors"
           >
             Next
@@ -190,10 +193,12 @@ export default function CalendarTab() {
                 className={`aspect-square border p-1 flex flex-col items-center justify-center transition-colors ${
                   isSelected
                     ? "border-blush bg-blush/10 text-blush"
-                    : "border-paper bg-paper text-ink hover:border-rule"
+                    : isToday
+                      ? "border-ink bg-paper text-ink"
+                      : "border-paper bg-paper text-ink hover:border-rule"
                 }`}
               >
-                <span className={`text-xs font-mono ${isToday ? "font-bold" : "font-medium"}`}>
+                <span className={`text-xs font-mono ${isToday ? "font-bold underline underline-offset-2" : "font-medium"}`}>
                   {day.getDate()}
                 </span>
                 {(sessionCount > 0 || planCount > 0 || quickLogCount > 0) && (
@@ -247,7 +252,11 @@ export default function CalendarTab() {
                 <p className="text-sm italic text-faded text-center py-3">No sessions logged</p>
               ) : (
                 selectedSessions.map((session) => (
-                  <SessionCard key={session.path} session={session} />
+                  <SessionCard
+                    key={session.path}
+                    session={session}
+                    onDelete={(path) => setDeletingPath(path)}
+                  />
                 ))
               )}
             </div>
@@ -288,6 +297,24 @@ export default function CalendarTab() {
           onSaved={loadCalendarData}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deletingPath}
+        title="Delete Session"
+        message="This will permanently delete this workout session. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          if (!deletingPath) return;
+          try {
+            await api.sessions.delete(pathToSlug(deletingPath));
+            loadCalendarData();
+          } catch (err) {
+            console.error("Failed to delete session:", err);
+          }
+          setDeletingPath(null);
+        }}
+        onCancel={() => setDeletingPath(null)}
+      />
     </div>
   );
 }
