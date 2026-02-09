@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Plan, QuickLog, Session } from "../lib/types";
 import { useExercises } from "../hooks/useExercises";
@@ -81,6 +81,21 @@ export default function CalendarTab() {
   useEffect(() => {
     loadCalendarData();
   }, [loadCalendarData]);
+
+  // Restore in-progress session from localStorage
+  const sessionRestoredRef = useRef(false);
+  useEffect(() => {
+    if (loading || sessionRestoredRef.current) return;
+    try {
+      const raw = localStorage.getItem("workout-active-session");
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved?.sourcePath) return;
+
+      const matchedPlan = plans.find((p) => p.path === saved.sourcePath);
+      if (matchedPlan) { sessionRestoredRef.current = true; setActivePlan(matchedPlan); }
+    } catch {}
+  }, [loading, plans]);
 
   const sessionsByDay = useMemo(() => {
     const grouped: Record<string, Session[]> = {};
@@ -293,7 +308,7 @@ export default function CalendarTab() {
           plan={activePlan}
           template={null}
           exercises={allExercises}
-          onClose={() => setActivePlan(null)}
+          onClose={() => { setActivePlan(null); sessionRestoredRef.current = false; }}
           onSaved={loadCalendarData}
         />
       )}

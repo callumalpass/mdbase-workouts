@@ -27,6 +27,15 @@ interface ExerciseLog {
   sets: SetEntry[];
 }
 
+const SESSION_KEY = "workout-active-session";
+
+interface SavedSession {
+  sourcePath: string;
+  exerciseLogs: ExerciseLog[];
+  activeIndex: number;
+  startTime: number;
+}
+
 interface Props {
   plan: Plan | null;
   template: PlanTemplate | null;
@@ -62,6 +71,21 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
   useEffect(() => {
     if (!source) return;
+
+    // Restore from saved session if available
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const saved: SavedSession = JSON.parse(raw);
+        if (saved.sourcePath === source.path) {
+          setExerciseLogs(saved.exerciseLogs);
+          setActiveIndex(saved.activeIndex);
+          startTimeRef.current = saved.startTime;
+          return;
+        }
+      }
+    } catch {}
+
     const logs: ExerciseLog[] = source.exercises.map((ex) => {
       const slug = parseWikilink(ex.exercise);
       const exerciseData = allExercises.find((e) => pathToSlug(e.path) === slug);
@@ -111,6 +135,18 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
     const slugs = exerciseLogs.map((l) => l.slug);
     api.exercises.lastSets(slugs).then(setLastSessions).catch(() => {});
   }, [exerciseLogs.length]);
+
+  // Persist session to localStorage on changes
+  useEffect(() => {
+    if (!source || exerciseLogs.length === 0) return;
+    const data: SavedSession = {
+      sourcePath: source.path,
+      exerciseLogs,
+      activeIndex,
+      startTime: startTimeRef.current,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  }, [exerciseLogs, activeIndex, source]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -281,6 +317,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         ...(rating > 0 && { rating }),
         ...(notes.trim() && { notes: notes.trim() }),
       });
+      localStorage.removeItem(SESSION_KEY);
       setShowStamp(true);
     } catch (err) {
       console.error("Failed to save session:", err);
@@ -292,6 +329,11 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const handleStampDone = () => {
     setShowStamp(false);
     onSaved();
+    onClose();
+  };
+
+  const handleCancel = () => {
+    localStorage.removeItem(SESSION_KEY);
     onClose();
   };
 
@@ -406,7 +448,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
       <div className="px-5 py-3 border-b border-rule bg-card">
         <div className="flex items-center justify-between mb-2">
           <button
-            onClick={onClose}
+            onClick={handleCancel}
             className="text-sm text-faded active:text-ink py-2 px-1 -ml-1"
           >
             Cancel

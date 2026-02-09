@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToday } from "../hooks/useToday";
 import { useExercises } from "../hooks/useExercises";
 import { parseWikilink, slugToName, formatTime, formatSet, pathToSlug } from "../lib/utils";
@@ -32,6 +32,24 @@ export default function TodayTab() {
 
   useEffect(() => {
     api.stats.get(getUserTimeZone()).then(setStats).catch(() => {});
+  }, [data]);
+
+  // Restore in-progress session from localStorage
+  const sessionRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!data || sessionRestoredRef.current) return;
+    try {
+      const raw = localStorage.getItem("workout-active-session");
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved?.sourcePath) return;
+
+      const matchedPlan = data.plans.find((p: Plan) => p.path === saved.sourcePath);
+      if (matchedPlan) { sessionRestoredRef.current = true; setActivePlan(matchedPlan); return; }
+
+      const matchedTemplate = data.templates?.find((t: PlanTemplate) => t.path === saved.sourcePath);
+      if (matchedTemplate) { sessionRestoredRef.current = true; setActiveTemplate(matchedTemplate); return; }
+    } catch {}
   }, [data]);
 
   if (loading || !data) {
@@ -401,7 +419,7 @@ export default function TodayTab() {
           plan={activePlan}
           template={activeTemplate}
           exercises={allExercises}
-          onClose={() => { setActivePlan(null); setActiveTemplate(null); }}
+          onClose={() => { setActivePlan(null); setActiveTemplate(null); sessionRestoredRef.current = false; }}
           onSaved={refresh}
         />
       )}

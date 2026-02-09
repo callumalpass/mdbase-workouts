@@ -1,6 +1,30 @@
 import { useState, useEffect, useRef } from "react";
 import { haptics } from "../lib/haptics";
 
+function playTimerBeep() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.value = 0.3;
+
+    // Three short beeps
+    [0, 0.2, 0.4].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      osc.connect(gain);
+      osc.start(ctx.currentTime + offset);
+      osc.stop(ctx.currentTime + offset + 0.12);
+    });
+
+    // Clean up after beeps finish
+    setTimeout(() => ctx.close(), 1000);
+  } catch {
+    // Audio not available — haptics fallback already handled
+  }
+}
+
 interface Props {
   duration: number;
   onComplete: () => void;
@@ -21,6 +45,7 @@ export default function CountdownTimer({ duration, onComplete, onSkip }: Props) 
       if (left <= 0) {
         clearInterval(interval);
         setRemaining(0);
+        playTimerBeep();
         haptics.success();
         onCompleteRef.current();
       } else {
