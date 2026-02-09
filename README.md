@@ -154,6 +154,9 @@ Base path: `/api`
 - Node.js 18+
 - npm
 - Optional for chat endpoint: Anthropic API key in environment
+- Optional security env:
+  - `CORS_ORIGIN` - comma-separated allowed origins for browser API access
+  - `CHAT_ALLOW_MUTATIONS=true` - allow chat `Write`/`Edit` tools (default is read-only tools)
 
 ## Setup
 
@@ -240,6 +243,8 @@ In production (`NODE_ENV=production`), the backend serves static files from `dis
 - `npm run dev:fe` - start frontend only
 - `npm run dev:be` - start backend only
 - `npm run build` - build frontend assets
+- `npm run typecheck` - run frontend and backend TypeScript checks
+- `npm run lint` - alias for `npm run typecheck`
 - `npm test` - run Vitest
 - `npm run test:watch` - run Vitest in watch mode
 - `npm run test:e2e` - run Playwright tests

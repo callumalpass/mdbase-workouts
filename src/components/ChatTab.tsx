@@ -31,7 +31,7 @@ export default function ChatTab() {
           <button
             onClick={clearHistory}
             disabled={streaming}
-            className="text-[10px] font-mono text-faded uppercase tracking-widest hover:text-blush transition-colors disabled:opacity-30"
+            className="mr-14 text-[10px] font-mono text-faded uppercase tracking-widest hover:text-blush transition-colors disabled:opacity-30"
           >
             Clear
           </button>

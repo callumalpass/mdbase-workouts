@@ -6,18 +6,27 @@ import { getUserTimeZone } from "../lib/datetime";
 export function useToday() {
   const [data, setData] = useState<TodayData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
-    api.today(getUserTimeZone()).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+    setError(null);
+    api.today(getUserTimeZone())
+      .then((d) => {
+        setData(d);
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Failed to load today's data";
+        setError(message);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  return { data, loading, refresh };
+  return { data, loading, error, refresh };
 }

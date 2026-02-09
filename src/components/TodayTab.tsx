@@ -15,7 +15,7 @@ import TemplateEditorSheet from "./TemplateEditorSheet";
 import ConfirmDialog from "./ConfirmDialog";
 
 export default function TodayTab() {
-  const { data, loading, refresh } = useToday();
+  const { data, loading, error, refresh } = useToday();
   const { allExercises } = useExercises();
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showPlanCreator, setShowPlanCreator] = useState(false);
@@ -52,10 +52,24 @@ export default function TodayTab() {
     } catch {}
   }, [data]);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-sm italic text-faded">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <p className="text-sm text-blush">{error || "Failed to load today's data."}</p>
+        <button
+          onClick={refresh}
+          className="px-4 py-2 text-xs font-mono uppercase tracking-wider border border-rule text-faded active:bg-card"
+        >
+          Retry
+        </button>
       </div>
     );
   }

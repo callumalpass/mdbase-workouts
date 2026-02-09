@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { Exercise } from "../lib/types";
+import type { CreateQuickLogInput, Exercise } from "../lib/types";
 import { api } from "../lib/api";
 import { pathToSlug, parseWikilink } from "../lib/utils";
 import { useLastUsed } from "../hooks/useLocalStorage";
@@ -67,7 +67,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
     if (!exercise) return;
     setSaving(true);
     const slug = pathToSlug(exercise.path);
-    const data: Record<string, unknown> = { exercise: slug };
+    const data: CreateQuickLogInput = { exercise: slug };
     if (reps) data.reps = Number(reps);
     if (weight) data.weight = Number(weight);
     if (duration) data.duration_seconds = Number(duration);

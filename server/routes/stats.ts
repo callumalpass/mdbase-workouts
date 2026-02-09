@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import "../lib/context.js";
 import { dateKeyInTimeZone, resolveTimeZone } from "../lib/timezone.js";
+import { parsePositiveIntQuery } from "../lib/validation.js";
 
 const stats = new Hono();
 
@@ -8,6 +9,7 @@ stats.get("/", async (c) => {
   const db = c.get("db");
   const now = new Date();
   const timeZone = resolveTimeZone(c.req.query("timezone"));
+  const sessionLimit = parsePositiveIntQuery(c.req.query("limit"), 5000, 20000);
   const todayStr = dateKeyInTimeZone(now, timeZone) || "1970-01-01";
   const todayEpochDay = dateKeyToEpochDay(todayStr);
 
@@ -16,6 +18,7 @@ stats.get("/", async (c) => {
     db.query({
       types: ["session"],
       order_by: [{ field: "date", direction: "desc" }],
+      limit: sessionLimit,
       include_body: false,
     }),
     db.query({
@@ -23,6 +26,9 @@ stats.get("/", async (c) => {
       include_body: false,
     }),
   ]);
+
+  if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
+  if (exercisesResult.error) return c.json({ error: exercisesResult.error.message }, 500);
 
   const sessions = (sessionsResult.results || [])
     .map((r) => {

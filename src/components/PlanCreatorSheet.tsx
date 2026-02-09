@@ -203,6 +203,25 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   )}
                 </div>
                 <ExercisePicker onSelect={handleAddExercise} />
+                {exercises.length > 0 && (
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setStep("exercises")}
+                      className="flex-1 py-3 border border-rule text-sm font-medium
+                        text-faded active:bg-card active:scale-[0.98] transition-all duration-75"
+                    >
+                      Review Plan
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={!canSave || saving}
+                      className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                        active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
+                    >
+                      {saving ? "Creating..." : "Create Plan"}
+                    </button>
+                  </div>
+                )}
               </>
             )}
 

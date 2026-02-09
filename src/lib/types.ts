@@ -146,3 +146,74 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
 }
+
+export interface SessionListResponse {
+  sessions: Session[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface SettingsResponse {
+  dataDir: string;
+  configDataDir: string;
+}
+
+export interface CreateExerciseInput {
+  name: string;
+  muscle_groups: string[];
+  equipment: string;
+  tracking: TrackingType;
+}
+
+export interface CreateQuickLogInput {
+  exercise: string;
+  reps?: number;
+  weight?: number;
+  duration_seconds?: number;
+  distance?: number;
+  notes?: string;
+}
+
+export interface CreateSessionInput {
+  date?: string;
+  exercises: Array<{
+    exercise: string;
+    sets: SetData[];
+  }>;
+  duration_minutes?: number;
+  plan?: string;
+  rating?: number;
+  notes?: string;
+}
+
+export interface CreatePlanInput {
+  date?: string;
+  title: string;
+  exercises: Array<{
+    exercise: string;
+    target_sets?: number;
+    target_reps?: number;
+    target_weight?: number;
+    notes?: string;
+  }>;
+  notes?: string;
+}
+
+export interface CreatePlanTemplateInput {
+  title: string;
+  exercises: Array<{
+    exercise: string;
+    target_sets?: number;
+    target_reps?: string;
+    target_weight?: number;
+    notes?: string;
+  }>;
+  notes?: string;
+}
+
+export interface LastSetsResponse {
+  [slug: string]: {
+    date: string;
+    sets: SetData[];
+  };
+}

@@ -18,7 +18,20 @@ import stats from "./routes/stats.js";
 
 const app = new Hono();
 
-app.use("/api/*", cors());
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5177,http://127.0.0.1:5177")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  "/api/*",
+  cors({
+    origin: (origin: string) => {
+      if (!origin) return "";
+      return allowedOrigins.includes(origin) ? origin : "";
+    },
+  })
+);
 
 // Health check
 app.get("/api/health", (c) => c.json({ status: "ok" }));

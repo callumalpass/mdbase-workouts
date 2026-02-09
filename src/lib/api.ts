@@ -1,3 +1,22 @@
+import type {
+  CreateExerciseInput,
+  CreatePlanInput,
+  CreatePlanTemplateInput,
+  CreateQuickLogInput,
+  CreateSessionInput,
+  Exercise,
+  ExerciseHistory,
+  LastSetsResponse,
+  Plan,
+  PlanTemplate,
+  QuickLog,
+  Session,
+  SessionListResponse,
+  SettingsResponse,
+  StatsResponse,
+  TodayData,
+} from "./types";
+
 const BASE = "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -14,67 +33,67 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   exercises: {
-    list: () => request<any[]>("/exercises"),
-    get: (slug: string) => request<any>(`/exercises/${slug}`),
-    history: (slug: string) => request<any>(`/exercises/${slug}/history`),
-    create: (data: any) =>
-      request<any>("/exercises", { method: "POST", body: JSON.stringify(data) }),
-    update: (slug: string, data: any) =>
-      request<any>(`/exercises/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
+    list: () => request<Exercise[]>("/exercises"),
+    get: (slug: string) => request<Exercise>(`/exercises/${slug}`),
+    history: (slug: string) => request<ExerciseHistory>(`/exercises/${slug}/history`),
+    create: (data: CreateExerciseInput) =>
+      request<Exercise>("/exercises", { method: "POST", body: JSON.stringify(data) }),
+    update: (slug: string, data: Partial<CreateExerciseInput>) =>
+      request<Exercise>(`/exercises/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
     lastSets: (slugs: string[]) =>
-      request<Record<string, { date: string; sets: any[] }>>("/exercises/last-sets", {
+      request<LastSetsResponse>("/exercises/last-sets", {
         method: "POST",
         body: JSON.stringify({ slugs }),
       }),
   },
   quickLogs: {
-    list: (limit = 50) => request<any[]>(`/quick-logs?limit=${limit}`),
-    create: (data: any) =>
-      request<any>("/quick-logs", { method: "POST", body: JSON.stringify(data) }),
+    list: (limit = 50) => request<QuickLog[]>(`/quick-logs?limit=${limit}`),
+    create: (data: CreateQuickLogInput) =>
+      request<QuickLog>("/quick-logs", { method: "POST", body: JSON.stringify(data) }),
   },
   sessions: {
     list: (limit = 20, offset = 0) =>
-      request<{ sessions: any[]; total: number; hasMore: boolean }>(
+      request<SessionListResponse>(
         `/sessions?limit=${limit}&offset=${offset}`
       ),
-    get: (id: string) => request<any>(`/sessions/${id}`),
-    create: (data: any) =>
-      request<any>("/sessions", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: any) =>
-      request<any>(`/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    get: (id: string) => request<Session>(`/sessions/${id}`),
+    create: (data: CreateSessionInput) =>
+      request<Session>("/sessions", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Session>) =>
+      request<Session>(`/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }),
   },
   plans: {
     list: (status?: string) =>
-      request<any[]>(`/plans${status ? `?status=${status}` : ""}`),
-    get: (id: string) => request<any>(`/plans/${id}`),
-    create: (data: any) =>
-      request<any>("/plans", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: any) =>
-      request<any>(`/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      request<Plan[]>(`/plans${status ? `?status=${status}` : ""}`),
+    get: (id: string) => request<Plan>(`/plans/${id}`),
+    create: (data: CreatePlanInput) =>
+      request<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Plan>) =>
+      request<Plan>(`/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   },
   planTemplates: {
-    list: () => request<any[]>("/plan-templates"),
-    get: (id: string) => request<any>(`/plan-templates/${id}`),
-    create: (data: any) =>
-      request<any>("/plan-templates", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: any) =>
-      request<any>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    list: () => request<PlanTemplate[]>("/plan-templates"),
+    get: (id: string) => request<PlanTemplate>(`/plan-templates/${id}`),
+    create: (data: CreatePlanTemplateInput) =>
+      request<PlanTemplate>("/plan-templates", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<PlanTemplate>) =>
+      request<PlanTemplate>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/plan-templates/${id}`, { method: "DELETE" }),
   },
   stats: {
     get: (timezone?: string) =>
-      request<any>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
+      request<StatsResponse>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
   },
   today: (timezone?: string) =>
-    request<any>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
+    request<TodayData>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
   settings: {
     get: () =>
-      request<{ dataDir: string; configDataDir: string }>("/settings"),
+      request<SettingsResponse>("/settings"),
     update: (data: { dataDir: string }) =>
-      request<{ dataDir: string; configDataDir: string }>("/settings", {
+      request<SettingsResponse>("/settings", {
         method: "PUT",
         body: JSON.stringify(data),
       }),

@@ -1,5 +1,13 @@
 import { Hono } from "hono";
 import "../lib/context.js";
+import {
+  ValidationError,
+  asOptionalString,
+  asRequiredString,
+  asSlug,
+  expectRecord,
+  slugify,
+} from "../lib/validation.js";
 
 const exercises = new Hono();
 
@@ -22,34 +30,47 @@ exercises.get("/", async (c) => {
 
 // Batch fetch last session sets for multiple exercises
 exercises.post("/last-sets", async (c) => {
-  const { slugs } = await c.req.json<{ slugs: string[] }>();
-  if (!Array.isArray(slugs) || slugs.length === 0) return c.json({});
+  try {
+    const payload = expectRecord(await c.req.json(), "Payload must be an object");
+    const slugsRaw = Array.isArray(payload.slugs) ? payload.slugs : [];
+    const slugs = slugsRaw
+      .filter((s): s is string => typeof s === "string")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => asSlug(s, "slugs[]"));
+    if (slugs.length === 0) return c.json({});
 
-  const db = c.get("db");
-  const sessionsResult = await db.query({
-    types: ["session"],
-    order_by: [{ field: "date", direction: "desc" }],
-    include_body: false,
-  });
-  if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
+    const db = c.get("db");
+    const sessionsResult = await db.query({
+      types: ["session"],
+      order_by: [{ field: "date", direction: "desc" }],
+      include_body: false,
+    });
+    if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
 
-  const wikilinks = new Map(slugs.map((s) => [`[[exercises/${s}]]`, s]));
-  const remaining = new Set(slugs);
-  const result: Record<string, { date: string; sets: any[] }> = {};
+    const wikilinks = new Map(slugs.map((s) => [`[[exercises/${s}]]`, s]));
+    const remaining = new Set(slugs);
+    const result: Record<string, { date: string; sets: unknown[] }> = {};
 
-  for (const r of sessionsResult.results) {
-    if (remaining.size === 0) break;
-    const session = r.frontmatter as any;
-    for (const ex of session.exercises || []) {
-      const slug = wikilinks.get(ex.exercise);
-      if (slug && remaining.has(slug)) {
-        result[slug] = { date: session.date, sets: ex.sets || [] };
-        remaining.delete(slug);
+    for (const r of sessionsResult.results) {
+      if (remaining.size === 0) break;
+      const session = r.frontmatter as any;
+      for (const ex of session.exercises || []) {
+        const slug = wikilinks.get(ex.exercise);
+        if (slug && remaining.has(slug)) {
+          result[slug] = { date: session.date, sets: ex.sets || [] };
+          remaining.delete(slug);
+        }
       }
     }
-  }
 
-  return c.json(result);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 // Get exercise history with stats
@@ -118,7 +139,7 @@ exercises.get("/:slug/history", async (c) => {
   entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Compute stats based on tracking type
-  const stats = computeStats(exercise.tracking, entries);
+  const stats = computeStats((exercise as any).tracking, entries);
 
   return c.json({ exercise, stats, entries });
 });
@@ -202,31 +223,50 @@ exercises.get("/:slug", async (c) => {
 // Create exercise
 exercises.post("/", async (c) => {
   const db = c.get("db");
-  const body = await c.req.json();
-  const slug = body.name
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-  const result = await db.create({
-    path: `exercises/${slug}.md`,
-    type: "exercise",
-    frontmatter: body,
-  });
-  if (result.error) return c.json({ error: result.error.message }, 400);
-  return c.json({ path: result.path, ...result.frontmatter }, 201);
+  try {
+    const body = expectRecord(await c.req.json(), "Exercise payload must be an object");
+    const name = asRequiredString(body.name, "name");
+    const slug = slugify(name) || "exercise";
+    const result = await db.create({
+      path: `exercises/${slug}.md`,
+      type: "exercise",
+      frontmatter: {
+        ...body,
+        name,
+      },
+    });
+    if (result.error) return c.json({ error: result.error.message }, 400);
+    return c.json({ path: result.path, ...result.frontmatter }, 201);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 // Update exercise
 exercises.put("/:slug", async (c) => {
   const slug = c.req.param("slug");
   const db = c.get("db");
-  const body = await c.req.json();
-  const result = await db.update({
-    path: `exercises/${slug}.md`,
-    fields: body,
-  });
-  if (result.error) return c.json({ error: result.error.message }, 400);
-  return c.json({ path: `exercises/${slug}.md`, ...result.frontmatter });
+  try {
+    const body = expectRecord(await c.req.json(), "Exercise update payload must be an object");
+    const name = asOptionalString(body.name);
+    const result = await db.update({
+      path: `exercises/${slug}.md`,
+      fields: {
+        ...body,
+        ...(name ? { name } : {}),
+      },
+    });
+    if (result.error) return c.json({ error: result.error.message }, 400);
+    return c.json({ path: `exercises/${slug}.md`, ...result.frontmatter });
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 // Delete exercise

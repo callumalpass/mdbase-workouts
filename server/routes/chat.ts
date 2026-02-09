@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getDataDir } from "../lib/db.js";
+import { ValidationError, asOptionalString, asRequiredString, expectRecord } from "../lib/validation.js";
 
 const chat = new Hono();
 
@@ -37,19 +38,31 @@ Type definitions live in _types/*.md. Each uses match.path_glob (e.g. path_glob:
 - Use metric units (kg, km) by default`;
 
 chat.post("/message", async (c) => {
-  const body = await c.req.json();
-  const { message, sessionId } = body;
+  let message = "";
+  let sessionId: string | undefined;
+  try {
+    const body = expectRecord(await c.req.json(), "Chat payload must be an object");
+    message = asRequiredString(body.message, "message");
+    sessionId = asOptionalString(body.sessionId);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 
   return streamSSE(c, async (stream) => {
     try {
+      const allowMutations = process.env.CHAT_ALLOW_MUTATIONS === "true";
+      const allowedTools = allowMutations
+        ? ["Read", "Write", "Edit", "Glob", "Grep"]
+        : ["Read", "Glob", "Grep"];
       const options: Record<string, any> = {
-        allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
+        allowedTools,
         cwd: getDataDir(),
         systemPrompt: SYSTEM_PROMPT,
         model: "sonnet",
-        maxTurns: 10,
+        maxTurns: 6,
         includePartialMessages: true,
       };
 
@@ -67,7 +80,7 @@ chat.post("/message", async (c) => {
 
       let currentToolName: string | null = null;
 
-      for await (const msg of query({ prompt: userMessages(), options })) {
+      for await (const msg of query({ prompt: userMessages() as any, options })) {
         if (msg.type === "system" && msg.subtype === "init") {
           await stream.writeSSE({
             event: "session",
@@ -125,10 +138,11 @@ chat.post("/message", async (c) => {
           });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       await stream.writeSSE({
         event: "error",
-        data: JSON.stringify({ error: err.message || "Unknown error" }),
+        data: JSON.stringify({ error: message }),
       });
     }
   });

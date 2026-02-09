@@ -138,9 +138,10 @@ export function useChat() {
 
         if (done) break;
       }
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        const errorMessage = err.message || "Something went wrong. Please try again.";
+    } catch (err: unknown) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Something went wrong. Please try again.";
         setError(errorMessage);
         setMessages((prev) => {
           const updated = [...prev];

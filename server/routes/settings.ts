@@ -36,8 +36,9 @@ settings.put("/", async (c) => {
 
   try {
     await reopenDb(trimmed);
-  } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to reopen collection";
+    return c.json({ error: message }, 400);
   }
 
   const config = await writeConfig({ dataDir: trimmed });

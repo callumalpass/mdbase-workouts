@@ -1,20 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import type { Plan, PlanTemplate, Exercise, TrackingType, LastSessionData, SetData } from "../lib/types";
+import type { Plan, PlanTemplate, Exercise, TrackingType, LastSessionData } from "../lib/types";
 import { api } from "../lib/api";
 import { parseWikilink, slugToName, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
 import { useLocalStorage, useLastUsed } from "../hooks/useLocalStorage";
 import SuccessStamp from "./SuccessStamp";
 import CountdownTimer from "./CountdownTimer";
-
-interface SetEntry {
-  weight: string;
-  reps: string;
-  duration: string;
-  distance: string;
-  done: boolean;
-  weightTouched: boolean;
-}
+import { emptySet, formatElapsed, formatLastSets, type SetEntry } from "./sessionLoggerHelpers";
 
 interface ExerciseLog {
   slug: string;
@@ -44,9 +36,6 @@ interface Props {
   onSaved: () => void;
 }
 
-function emptySet(): SetEntry {
-  return { weight: "", reps: "", duration: "", distance: "", done: false, weightTouched: false };
-}
 
 export default function SessionLoggerSheet({ plan, template, exercises: allExercises, onClose, onSaved }: Props) {
   const source = plan || template;
@@ -156,33 +145,6 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   }, []);
 
   if (!source) return null;
-
-  const formatElapsed = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
-
-  const formatLastSets = (sets: SetData[]): string => {
-    if (!sets.length) return "";
-    // Group consecutive same-weight sets
-    const groups: { weight: number | undefined; reps: number[] }[] = [];
-    for (const s of sets) {
-      const last = groups[groups.length - 1];
-      if (last && last.weight === s.weight) {
-        last.reps.push(s.reps ?? 0);
-      } else {
-        groups.push({ weight: s.weight, reps: [s.reps ?? 0] });
-      }
-    }
-    return groups
-      .map((g) =>
-        g.weight != null
-          ? `${g.weight}kg × ${g.reps.join(", ")}`
-          : g.reps.join(", ")
-      )
-      .join(" / ");
-  };
 
   const currentLog = exerciseLogs[activeIndex];
 
@@ -673,6 +635,8 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
                 <button
                   onClick={() => handleToggleDone(activeIndex, si)}
+                  aria-label={`Toggle set ${si + 1} complete`}
+                  data-testid={`set-done-${si + 1}`}
                   className={`w-11 h-11 border flex items-center justify-center text-sm transition-colors mx-auto ${
                     set.done
                       ? "bg-sage/15 border-sage text-sage"

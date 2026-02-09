@@ -52,7 +52,7 @@ test.describe("workout tracker e2e", () => {
 
     await page
       .locator("section")
-      .first()
+      .filter({ has: page.getByRole("heading", { name: "Planned" }) })
       .getByRole("button")
       .filter({ hasText: /\+?\s*new/i })
       .click();
@@ -60,6 +60,10 @@ test.describe("workout tracker e2e", () => {
     await page.getByRole("button", { name: "Add Exercises" }).click();
 
     await page.getByRole("button", { name: /bench press/i }).click();
+    const doneButton = page.getByRole("button", { name: /done \(\d+\)/i });
+    if (await doneButton.count()) {
+      await doneButton.first().click();
+    }
     await page.getByRole("button", { name: "Create Plan" }).click();
 
     await expect.poll(() => mock.requests.plans.length).toBe(1);
@@ -87,7 +91,7 @@ test.describe("workout tracker e2e", () => {
     const setInputs = page.locator('input[type="number"]');
     await setInputs.nth(0).fill("80");
     await setInputs.nth(1).fill("5");
-    await page.locator("button.w-8.h-8").first().click();
+    await page.getByRole("button", { name: /toggle set 1 complete/i }).click();
 
     await page.getByRole("button", { name: "Finish" }).first().click();
     await expect(page.getByText("Finish Workout")).toBeVisible();

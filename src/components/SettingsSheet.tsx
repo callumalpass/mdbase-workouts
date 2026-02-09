@@ -34,8 +34,9 @@ export default function SettingsSheet({ open, onClose }: Props) {
     try {
       await api.settings.update({ dataDir: dataDir.trim() });
       window.location.reload();
-    } catch (err: any) {
-      setError(err.message || "Failed to update");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update";
+      setError(message);
     } finally {
       setSaving(false);
     }
