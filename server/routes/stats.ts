@@ -1,12 +1,15 @@
 import { Hono } from "hono";
 import "../lib/context.js";
+import { dateKeyInTimeZone, resolveTimeZone } from "../lib/timezone.js";
 
 const stats = new Hono();
 
 stats.get("/", async (c) => {
   const db = c.get("db");
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const timeZone = resolveTimeZone(c.req.query("timezone"));
+  const todayStr = dateKeyInTimeZone(now, timeZone) || "1970-01-01";
+  const todayEpochDay = dateKeyToEpochDay(todayStr);
 
   // Fetch all sessions and exercises in parallel
   const [sessionsResult, exercisesResult] = await Promise.all([
@@ -21,10 +24,18 @@ stats.get("/", async (c) => {
     }),
   ]);
 
-  const sessions = (sessionsResult.results || []).map((r) => ({
-    path: r.path,
-    ...r.frontmatter,
-  })) as any[];
+  const sessions = (sessionsResult.results || [])
+    .map((r) => {
+      const date = (r.frontmatter as any).date;
+      const dateKey = dateKeyInTimeZone(date, timeZone);
+      if (!dateKey) return null;
+      return {
+        path: r.path,
+        ...r.frontmatter,
+        __dateKey: dateKey,
+      };
+    })
+    .filter(Boolean) as any[];
 
   const exerciseMap = new Map<string, any>();
   for (const r of exercisesResult.results || []) {
@@ -35,50 +46,49 @@ stats.get("/", async (c) => {
   // --- Streak ---
   const sessionDates = new Set<string>();
   for (const s of sessions) {
-    if (s.date) sessionDates.add(s.date.slice(0, 10));
+    if (s.__dateKey) sessionDates.add(s.__dateKey);
   }
 
   // Walk backwards counting consecutive weeks with >= 1 session
-  const monday = getMonday(now);
+  const monday = getMondayDateKey(todayStr);
   let weekStreak = 0;
-  let weekStart = new Date(monday);
+  let weekStart = monday;
 
   // Check current week first
   if (hasSessionInWeek(sessionDates, weekStart)) {
     weekStreak = 1;
-    weekStart.setDate(weekStart.getDate() - 7);
+    weekStart = addDaysToDateKey(weekStart, -7);
     while (hasSessionInWeek(sessionDates, weekStart)) {
       weekStreak++;
-      weekStart.setDate(weekStart.getDate() - 7);
+      weekStart = addDaysToDateKey(weekStart, -7);
     }
   }
 
   // This week session count
-  const thisMonday = getMonday(now);
+  const thisMondayEpochDay = dateKeyToEpochDay(monday);
   let thisWeekSessions = 0;
   for (const dateStr of sessionDates) {
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (d >= thisMonday && d <= now) thisWeekSessions++;
+    const epochDay = dateKeyToEpochDay(dateStr);
+    if (epochDay >= thisMondayEpochDay && epochDay <= todayEpochDay) thisWeekSessions++;
   }
 
   // --- PRs (today's sessions vs historical) ---
-  const todaySessions = sessions.filter((s) => s.date?.startsWith(todayStr));
-  const historicalSessions = sessions.filter((s) => !s.date?.startsWith(todayStr));
+  const todaySessions = sessions.filter((s) => s.__dateKey === todayStr);
+  const historicalSessions = sessions.filter((s) => s.__dateKey !== todayStr);
   const prs = computePRs(todaySessions, historicalSessions, exerciseMap);
 
   // --- Volume ---
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const fourteenDaysAgo = new Date(now);
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+  const sevenDaysAgoEpochDay = todayEpochDay - 6;
+  const fourteenDaysAgoEpochDay = todayEpochDay - 13;
+  const lastWeekEndEpochDay = todayEpochDay - 7;
 
   const thisWeekSess = sessions.filter((s) => {
-    const d = new Date(s.date);
-    return d >= sevenDaysAgo && d <= now;
+    const epochDay = dateKeyToEpochDay(s.__dateKey);
+    return epochDay >= sevenDaysAgoEpochDay && epochDay <= todayEpochDay;
   });
   const lastWeekSess = sessions.filter((s) => {
-    const d = new Date(s.date);
-    return d >= fourteenDaysAgo && d < sevenDaysAgo;
+    const epochDay = dateKeyToEpochDay(s.__dateKey);
+    return epochDay >= fourteenDaysAgoEpochDay && epochDay <= lastWeekEndEpochDay;
   });
 
   const thisWeekVolume = computeVolume(thisWeekSess, exerciseMap);
@@ -95,22 +105,40 @@ stats.get("/", async (c) => {
   });
 });
 
-function getMonday(d: Date): Date {
-  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const day = date.getDay();
+function getMondayDateKey(dateKey: string): string {
+  const day = dateKeyWeekday(dateKey);
   const diff = day === 0 ? 6 : day - 1;
-  date.setDate(date.getDate() - diff);
-  return date;
+  return addDaysToDateKey(dateKey, -diff);
 }
 
-function hasSessionInWeek(dates: Set<string>, weekStart: Date): boolean {
+function hasSessionInWeek(dates: Set<string>, weekStart: string): boolean {
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
+    const key = addDaysToDateKey(weekStart, i);
     if (dates.has(key)) return true;
   }
   return false;
+}
+
+function dateKeyToEpochDay(dateKey: string): number {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+function epochDayToDateKey(epochDay: number): string {
+  const d = new Date(epochDay * 86_400_000);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateKey(dateKey: string, days: number): string {
+  return epochDayToDateKey(dateKeyToEpochDay(dateKey) + days);
+}
+
+function dateKeyWeekday(dateKey: string): number {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 function computePRs(

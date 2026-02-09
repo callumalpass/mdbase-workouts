@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import type { TodayData } from "../lib/types";
+import { getUserTimeZone } from "../lib/datetime";
 
 export function useToday() {
   const [data, setData] = useState<TodayData | null>(null);
@@ -8,7 +9,7 @@ export function useToday() {
 
   const refresh = useCallback(() => {
     setLoading(true);
-    api.today().then((d) => {
+    api.today(getUserTimeZone()).then((d) => {
       setData(d);
       setLoading(false);
     });

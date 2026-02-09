@@ -1,4 +1,5 @@
 import type { TrackingType } from "../lib/types";
+import Stopwatch from "./Stopwatch";
 
 interface Props {
   tracking: TrackingType;
@@ -77,7 +78,8 @@ export default function SetInput({
   if (tracking === "timed") {
     return (
       <div>
-        <label className={labelClass}>Duration (seconds)</label>
+        <Stopwatch onStop={(secs) => onDurationChange(String(secs))} />
+        <label className={labelClass}>Or enter manually (seconds)</label>
         <input
           type="number"
           inputMode="numeric"

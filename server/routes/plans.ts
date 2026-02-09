@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import "../lib/context.js";
+import { dateKeyInTimeZone, resolveTimeZone } from "../lib/timezone.js";
 
 const plans = new Hono();
 
@@ -39,7 +40,8 @@ plans.get("/:id", async (c) => {
 plans.post("/", async (c) => {
   const db = c.get("db");
   const body = await c.req.json();
-  const date = body.date || new Date().toISOString().slice(0, 10);
+  const timeZone = resolveTimeZone(body.timezone || c.req.query("timezone"));
+  const date = body.date || dateKeyInTimeZone(new Date(), timeZone) || "1970-01-01";
   const slug = `${date}-${(body.title || "workout")
     .toLowerCase()
     .replace(/\s+/g, "-")

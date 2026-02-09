@@ -65,9 +65,11 @@ export const api = {
       request<{ ok: boolean }>(`/plan-templates/${id}`, { method: "DELETE" }),
   },
   stats: {
-    get: () => request<any>("/stats"),
+    get: (timezone?: string) =>
+      request<any>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
   },
-  today: () => request<any>("/today"),
+  today: (timezone?: string) =>
+    request<any>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
   settings: {
     get: () =>
       request<{ dataDir: string; configDataDir: string }>("/settings"),

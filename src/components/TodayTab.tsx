@@ -4,6 +4,7 @@ import { useExercises } from "../hooks/useExercises";
 import { parseWikilink, slugToName, formatTime, formatSet, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
 import { api } from "../lib/api";
+import { getUserTimeZone } from "../lib/datetime";
 import type { Plan, PlanTemplate, StatsResponse } from "../lib/types";
 import PlanCard from "./PlanCard";
 import TemplateCard from "./TemplateCard";
@@ -30,7 +31,7 @@ export default function TodayTab() {
   const [deletingTemplate, setDeletingTemplate] = useState<PlanTemplate | null>(null);
 
   useEffect(() => {
-    api.stats.get().then(setStats).catch(() => {});
+    api.stats.get(getUserTimeZone()).then(setStats).catch(() => {});
   }, [data]);
 
   if (loading || !data) {

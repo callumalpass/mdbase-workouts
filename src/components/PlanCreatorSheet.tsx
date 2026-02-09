@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import type { Exercise } from "../lib/types";
 import { api } from "../lib/api";
 import { pathToSlug } from "../lib/utils";
+import { todayLocalDateKey } from "../lib/datetime";
 import { useDragToDismiss } from "../hooks/useDragToDismiss";
 import ExercisePicker from "./ExercisePicker";
 import SuccessStamp from "./SuccessStamp";
@@ -24,7 +25,7 @@ type Step = "details" | "exercises" | "picking";
 export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>("details");
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayLocalDateKey());
   const [exercises, setExercises] = useState<PlanExerciseEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
@@ -32,7 +33,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const handleClose = useCallback(() => {
     setStep("details");
     setTitle("");
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(todayLocalDateKey());
     setExercises([]);
     onClose();
   }, [onClose]);
