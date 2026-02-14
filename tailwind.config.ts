@@ -13,6 +13,7 @@ export default {
         blush: "#E05170",
         ocean: "#3356D0",
         sage: "#5A9668",
+        amber: "#D4940A",
       },
       keyframes: {
         slideUp: {

@@ -105,11 +105,16 @@ export default function TodayTab() {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-card border-l-2 border-sage p-4">
             <div className="text-2xl font-mono font-bold text-sage">
-              {stats.streak.weekStreak}
+              {stats.streak.currentStreak}
             </div>
             <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
-              Week Streak
+              Day Streak
             </div>
+            {stats.streak.bankedCheatDays > 0 && (
+              <div className="text-[11px] font-mono text-amber mt-1">
+                {stats.streak.bankedCheatDays} cheat {stats.streak.bankedCheatDays === 1 ? "day" : "days"}
+              </div>
+            )}
           </div>
           <div className="bg-card border-l-2 border-blush p-4">
             <div className="text-2xl font-mono font-bold text-blush">

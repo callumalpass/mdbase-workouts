@@ -13,8 +13,8 @@ stats.get("/", async (c) => {
   const todayStr = dateKeyInTimeZone(now, timeZone) || "1970-01-01";
   const todayEpochDay = dateKeyToEpochDay(todayStr);
 
-  // Fetch all sessions and exercises in parallel
-  const [sessionsResult, exercisesResult] = await Promise.all([
+  // Fetch all sessions, exercises, and quick-logs in parallel
+  const [sessionsResult, exercisesResult, quickLogsResult] = await Promise.all([
     db.query({
       types: ["session"],
       order_by: [{ field: "date", direction: "desc" }],
@@ -25,10 +25,15 @@ stats.get("/", async (c) => {
       types: ["exercise"],
       include_body: false,
     }),
+    db.query({
+      types: ["quick-log"],
+      include_body: false,
+    }),
   ]);
 
   if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
   if (exercisesResult.error) return c.json({ error: exercisesResult.error.message }, 500);
+  if (quickLogsResult.error) return c.json({ error: quickLogsResult.error.message }, 500);
 
   const sessions = (sessionsResult.results || [])
     .map((r) => {
@@ -49,32 +54,33 @@ stats.get("/", async (c) => {
     exerciseMap.set(r.path, ex);
   }
 
-  // --- Streak ---
-  const sessionDates = new Set<string>();
-  for (const s of sessions) {
-    if (s.__dateKey) sessionDates.add(s.__dateKey);
-  }
-
-  // Walk backwards counting consecutive weeks with >= 1 session
-  const monday = getMondayDateKey(todayStr);
-  let weekStreak = 0;
-  let weekStart = monday;
-
-  // Check current week first
-  if (hasSessionInWeek(sessionDates, weekStart)) {
-    weekStreak = 1;
-    weekStart = addDaysToDateKey(weekStart, -7);
-    while (hasSessionInWeek(sessionDates, weekStart)) {
-      weekStreak++;
-      weekStart = addDaysToDateKey(weekStart, -7);
+  // --- Quick-log dates ---
+  const quickLogDates = new Set<string>();
+  for (const r of quickLogsResult.results || []) {
+    const loggedAt = (r.frontmatter as any).logged_at;
+    if (loggedAt) {
+      const dateKey = dateKeyInTimeZone(loggedAt, timeZone);
+      if (dateKey) quickLogDates.add(dateKey);
     }
   }
 
-  // This week session count
+  // --- Streak (day-based with cheat days) ---
+  const activeDates = new Set<string>();
+  for (const s of sessions) {
+    if (s.__dateKey) activeDates.add(s.__dateKey);
+  }
+  for (const d of quickLogDates) {
+    activeDates.add(d);
+  }
+
+  const streakResult = computeStreak(activeDates, todayEpochDay);
+
+  // This week session count (sessions only, Mon-today)
+  const monday = getMondayDateKey(todayStr);
   const thisMondayEpochDay = dateKeyToEpochDay(monday);
   let thisWeekSessions = 0;
-  for (const dateStr of sessionDates) {
-    const epochDay = dateKeyToEpochDay(dateStr);
+  for (const s of sessions) {
+    const epochDay = dateKeyToEpochDay(s.__dateKey);
     if (epochDay >= thisMondayEpochDay && epochDay <= todayEpochDay) thisWeekSessions++;
   }
 
@@ -101,7 +107,12 @@ stats.get("/", async (c) => {
   const lastWeekVolume = computeVolume(lastWeekSess, exerciseMap);
 
   return c.json({
-    streak: { weekStreak, thisWeekSessions },
+    streak: {
+      currentStreak: streakResult.currentStreak,
+      thisWeekSessions,
+      bankedCheatDays: streakResult.bankedCheatDays,
+      cheatDayDates: streakResult.cheatDayDates,
+    },
     prs,
     volume: {
       thisWeek: { sets: thisWeekVolume.sets, volume: thisWeekVolume.volume },
@@ -115,14 +126,6 @@ function getMondayDateKey(dateKey: string): string {
   const day = dateKeyWeekday(dateKey);
   const diff = day === 0 ? 6 : day - 1;
   return addDaysToDateKey(dateKey, -diff);
-}
-
-function hasSessionInWeek(dates: Set<string>, weekStart: string): boolean {
-  for (let i = 0; i < 7; i++) {
-    const key = addDaysToDateKey(weekStart, i);
-    if (dates.has(key)) return true;
-  }
-  return false;
 }
 
 function dateKeyToEpochDay(dateKey: string): number {
@@ -145,6 +148,61 @@ function addDaysToDateKey(dateKey: string, days: number): string {
 function dateKeyWeekday(dateKey: string): number {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+interface StreakResult {
+  currentStreak: number;
+  bankedCheatDays: number;
+  cheatDayDates: string[];
+}
+
+function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakResult {
+  if (activeDates.size === 0) {
+    return { currentStreak: 0, bankedCheatDays: 0, cheatDayDates: [] };
+  }
+
+  // Convert to sorted epoch days
+  const epochDays = Array.from(activeDates)
+    .map(dateKeyToEpochDay)
+    .sort((a, b) => a - b);
+
+  const earliest = epochDays[0];
+  const activeSet = new Set(epochDays);
+
+  let streak = 0;
+  let activeInStreak = 0;
+  let consecutiveRest = 0;
+  let bank = 0;
+  let cheatDayDates: string[] = [];
+
+  for (let day = earliest; day <= todayEpochDay; day++) {
+    if (activeSet.has(day)) {
+      streak++;
+      activeInStreak++;
+      consecutiveRest = 0;
+      if (activeInStreak % 7 === 0) {
+        bank = Math.min(bank + 1, 5);
+      }
+    } else {
+      consecutiveRest++;
+      if (consecutiveRest >= 2) {
+        if (bank > 0) {
+          bank--;
+          cheatDayDates.push(epochDayToDateKey(day));
+          consecutiveRest = 0; // streak survives, not incremented
+        } else {
+          // Streak breaks
+          streak = 0;
+          activeInStreak = 0;
+          bank = 0;
+          cheatDayDates = [];
+          consecutiveRest = 0;
+        }
+      }
+    }
+  }
+
+  return { currentStreak: streak, bankedCheatDays: bank, cheatDayDates };
 }
 
 function computePRs(

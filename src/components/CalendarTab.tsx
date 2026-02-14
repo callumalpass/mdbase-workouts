@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { getUserTimeZone } from "../lib/datetime";
 import type { Plan, QuickLog, Session } from "../lib/types";
 import { useExercises } from "../hooks/useExercises";
 import { formatSet, formatTime, parseWikilink, pathToSlug, slugToName } from "../lib/utils";
@@ -45,6 +46,7 @@ export default function CalendarTab() {
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const { allExercises } = useExercises();
+  const [cheatDaySet, setCheatDaySet] = useState<Set<string>>(new Set());
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -81,6 +83,12 @@ export default function CalendarTab() {
   useEffect(() => {
     loadCalendarData();
   }, [loadCalendarData]);
+
+  useEffect(() => {
+    api.stats.get(getUserTimeZone()).then((stats) => {
+      setCheatDaySet(new Set(stats.streak.cheatDayDates));
+    }).catch(() => {});
+  }, [sessions]);
 
   // Restore in-progress session from localStorage
   const sessionRestoredRef = useRef(false);
@@ -127,6 +135,65 @@ export default function CalendarTab() {
     }
     return grouped;
   }, [quickLogs]);
+
+  const { streakDays, cheatDays } = useMemo(() => {
+    // Build set of all active dateKeys (sessions + quick-logs)
+    const activeDates = new Set<string>();
+    for (const key of Object.keys(sessionsByDay)) activeDates.add(key);
+    for (const key of Object.keys(quickLogsByDay)) activeDates.add(key);
+
+    if (activeDates.size === 0) return { streakDays: new Set<string>(), cheatDays: new Set<string>() };
+
+    // Merge cheat days into continuity dates so bridged gaps form continuous streak spans
+    const continuityDates = new Set(activeDates);
+    for (const d of cheatDaySet) continuityDates.add(d);
+
+    // Sort continuity dates
+    const sorted = Array.from(continuityDates).sort();
+
+    // Walk through sorted dates, grouping into streak segments
+    // A new segment starts when the gap between consecutive continuity dates is >2 days
+    const segments: [string, string][] = [];
+    let segStart = sorted[0];
+    let segEnd = sorted[0];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = new Date(`${segEnd}T00:00:00`);
+      const curr = new Date(`${sorted[i]}T00:00:00`);
+      const gapDays = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
+
+      if (gapDays <= 2) {
+        segEnd = sorted[i];
+      } else {
+        segments.push([segStart, segEnd]);
+        segStart = sorted[i];
+        segEnd = sorted[i];
+      }
+    }
+    segments.push([segStart, segEnd]);
+
+    // For segments with 2+ continuity days, mark the entire span as "in streak"
+    const result = new Set<string>();
+    for (const [start, end] of segments) {
+      const startDate = new Date(`${start}T00:00:00`);
+      const endDate = new Date(`${end}T00:00:00`);
+      let count = 0;
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        if (continuityDates.has(toDateKey(cursor))) count++;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      if (count >= 2) {
+        const d = new Date(startDate);
+        while (d <= endDate) {
+          result.add(toDateKey(d));
+          d.setDate(d.getDate() + 1);
+        }
+      }
+    }
+    return { streakDays: result, cheatDays: cheatDaySet };
+  }, [sessionsByDay, quickLogsByDay, cheatDaySet]);
 
   const monthGrid = useMemo(() => {
     const year = month.getFullYear();
@@ -200,6 +267,8 @@ export default function CalendarTab() {
             const quickLogCount = quickLogsByDay[key]?.length ?? 0;
             const isSelected = key === selectedDay;
             const isToday = key === toDateKey(new Date());
+            const isCheatDay = cheatDays.has(key);
+            const inStreak = streakDays.has(key);
 
             return (
               <button
@@ -210,7 +279,11 @@ export default function CalendarTab() {
                     ? "border-blush bg-blush/10 text-blush"
                     : isToday
                       ? "border-ink bg-paper text-ink"
-                      : "border-paper bg-paper text-ink hover:border-rule"
+                      : isCheatDay
+                        ? "border-amber/40 bg-amber/10 text-ink"
+                        : inStreak
+                          ? "border-sage/30 bg-sage/10 text-ink"
+                          : "border-paper bg-paper text-ink hover:border-rule"
                 }`}
               >
                 <span className={`text-xs font-mono ${isToday ? "font-bold underline underline-offset-2" : "font-medium"}`}>

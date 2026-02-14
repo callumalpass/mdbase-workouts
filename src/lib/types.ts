@@ -126,8 +126,10 @@ export interface PR {
 
 export interface StatsResponse {
   streak: {
-    weekStreak: number;
+    currentStreak: number;
     thisWeekSessions: number;
+    bankedCheatDays: number;
+    cheatDayDates: string[];
   };
   prs: PR[];
   volume: {
