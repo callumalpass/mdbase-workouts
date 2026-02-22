@@ -139,6 +139,16 @@ export interface StatsResponse {
   };
 }
 
+export interface WeeklySetEntry {
+  weekStart: string;
+  sets: number;
+  isCurrentWeek: boolean;
+}
+
+export interface WeeklyStatsResponse {
+  weeks: WeeklySetEntry[];
+}
+
 export interface LastSessionData {
   date: string;
   sets: SetData[];

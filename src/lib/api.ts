@@ -15,6 +15,7 @@ import type {
   SettingsResponse,
   StatsResponse,
   TodayData,
+  WeeklyStatsResponse,
 } from "./types";
 
 const BASE = "/api";
@@ -86,6 +87,8 @@ export const api = {
   stats: {
     get: (timezone?: string) =>
       request<StatsResponse>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
+    weekly: (timezone?: string) =>
+      request<WeeklyStatsResponse>(`/stats/weekly${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
   },
   today: (timezone?: string) =>
     request<TodayData>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),

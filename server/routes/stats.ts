@@ -319,4 +319,63 @@ function computeVolume(
   return { sets: totalSets, volume: Math.round(totalVolume), muscleGroups };
 }
 
+stats.get("/weekly", async (c) => {
+  const db = c.get("db");
+  const now = new Date();
+  const timeZone = resolveTimeZone(c.req.query("timezone"));
+  const todayStr = dateKeyInTimeZone(now, timeZone) || "1970-01-01";
+
+  const [sessionsResult, quickLogsResult] = await Promise.all([
+    db.query({ types: ["session"], limit: 20000, include_body: false }),
+    db.query({ types: ["quick-log"], limit: 20000, include_body: false }),
+  ]);
+
+  if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
+  if (quickLogsResult.error) return c.json({ error: quickLogsResult.error.message }, 500);
+
+  const weekSets = new Map<string, number>();
+
+  for (const r of sessionsResult.results || []) {
+    const date = (r.frontmatter as any).date;
+    const dateKey = dateKeyInTimeZone(date, timeZone);
+    if (!dateKey) continue;
+    const weekStart = getMondayDateKey(dateKey);
+    let sets = 0;
+    for (const ex of (r.frontmatter as any).exercises || []) {
+      sets += (ex.sets || []).length;
+    }
+    weekSets.set(weekStart, (weekSets.get(weekStart) || 0) + sets);
+  }
+
+  for (const r of quickLogsResult.results || []) {
+    const loggedAt = (r.frontmatter as any).logged_at;
+    if (!loggedAt) continue;
+    const dateKey = dateKeyInTimeZone(loggedAt, timeZone);
+    if (!dateKey) continue;
+    const weekStart = getMondayDateKey(dateKey);
+    weekSets.set(weekStart, (weekSets.get(weekStart) || 0) + 1);
+  }
+
+  if (weekSets.size === 0) return c.json({ weeks: [] });
+
+  const todayWeekStart = getMondayDateKey(todayStr);
+  const allWeekStarts = Array.from(weekSets.keys()).sort();
+  const earliestWeek = allWeekStarts[0];
+
+  const weeks: Array<{ weekStart: string; sets: number; isCurrentWeek: boolean }> = [];
+  let current = earliestWeek;
+  const currentEpoch = dateKeyToEpochDay(todayWeekStart);
+
+  while (dateKeyToEpochDay(current) <= currentEpoch) {
+    weeks.push({
+      weekStart: current,
+      sets: weekSets.get(current) || 0,
+      isCurrentWeek: current === todayWeekStart,
+    });
+    current = addDaysToDateKey(current, 7);
+  }
+
+  return c.json({ weeks });
+});
+
 export default stats;

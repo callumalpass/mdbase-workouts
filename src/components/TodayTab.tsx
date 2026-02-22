@@ -5,8 +5,9 @@ import { parseWikilink, slugToName, formatTime, formatSet, pathToSlug } from "..
 import { haptics } from "../lib/haptics";
 import { api } from "../lib/api";
 import { getUserTimeZone } from "../lib/datetime";
-import type { Plan, PlanTemplate, StatsResponse } from "../lib/types";
+import type { Plan, PlanTemplate, StatsResponse, WeeklyStatsResponse } from "../lib/types";
 import PlanCard from "./PlanCard";
+import WeeklySetsChart from "./WeeklySetsChart";
 import TemplateCard from "./TemplateCard";
 import QuickLogSheet from "./QuickLogSheet";
 import PlanCreatorSheet from "./PlanCreatorSheet";
@@ -23,7 +24,11 @@ export default function TodayTab() {
   const [activeTemplate, setActiveTemplate] = useState<PlanTemplate | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyStatsResponse | null>(null);
+  const [targetSets, setTargetSets] = useState<number>(
+    () => Number(localStorage.getItem("workout-weekly-target") || 80)
+  );
+  const [editingTarget, setEditingTarget] = useState(false);
 
   // Template management state
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
@@ -33,6 +38,10 @@ export default function TodayTab() {
   useEffect(() => {
     api.stats.get(getUserTimeZone()).then(setStats).catch(() => {});
   }, [data]);
+
+  useEffect(() => {
+    api.stats.weekly(getUserTimeZone()).then(setWeeklyStats).catch(() => {});
+  }, []);
 
   // Restore in-progress session from localStorage
   const sessionRestoredRef = useRef(false);
@@ -76,16 +85,6 @@ export default function TodayTab() {
 
   const hasContent = data.plans.length > 0 || data.sessions.length > 0 || data.quickLogs.length > 0 || (data.templates && data.templates.length > 0);
 
-  const volumeDelta = stats?.volume?.lastWeek?.sets
-    ? Math.round(((stats.volume.thisWeek.sets - stats.volume.lastWeek.sets) / stats.volume.lastWeek.sets) * 100)
-    : null;
-
-  const topMuscleGroups = stats?.volume?.muscleGroups
-    ? Object.entries(stats.volume.muscleGroups)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-    : [];
-
   return (
     <div className="p-5 pb-20 space-y-8">
       <div className="pt-3">
@@ -127,6 +126,46 @@ export default function TodayTab() {
         </div>
       )}
 
+      {/* Weekly sets chart */}
+      {weeklyStats && weeklyStats.weeks.length > 1 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm italic text-faded border-l-2 border-sage pl-3">
+              Sets / week
+            </h2>
+            {editingTarget ? (
+              <input
+                type="number"
+                min={1}
+                defaultValue={targetSets}
+                autoFocus
+                className="w-16 text-right text-[11px] font-mono text-faded bg-transparent border-b border-rule outline-none"
+                onBlur={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (val > 0) {
+                    setTargetSets(val);
+                    localStorage.setItem("workout-weekly-target", String(val));
+                  }
+                  setEditingTarget(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setEditingTarget(false);
+                }}
+              />
+            ) : (
+              <button
+                onClick={() => setEditingTarget(true)}
+                className="text-[11px] font-mono text-faded active:text-ink transition-colors"
+              >
+                target: {targetSets}
+              </button>
+            )}
+          </div>
+          <WeeklySetsChart weeks={weeklyStats.weeks} targetSets={targetSets} />
+        </section>
+      )}
+
       {/* PR Feed */}
       {stats && stats.prs.length > 0 && (
         <section>
@@ -154,65 +193,6 @@ export default function TodayTab() {
               </div>
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Volume summary */}
-      {stats && (stats.volume.thisWeek.sets > 0 || stats.volume.lastWeek.sets > 0) && (
-        <section>
-          <button
-            onClick={() => setVolumeOpen((o) => !o)}
-            className="flex items-center gap-2 w-full text-left py-2 -my-2 mb-1"
-          >
-            <span
-              className="text-[10px] text-faded transition-transform duration-200"
-              style={{ transform: volumeOpen ? "rotate(90deg)" : "rotate(0deg)" }}
-            >
-              ▶
-            </span>
-            <h2 className="text-sm italic text-faded border-l-2 border-sage pl-3">
-              This Week
-            </h2>
-          </button>
-          {volumeOpen && (
-            <div className="space-y-3 animate-fade-slide-in">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-card border-l-2 border-rule p-3">
-                  <div className="text-xl font-mono font-bold">{stats.volume.thisWeek.sets}</div>
-                  <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-0.5">
-                    Total Sets
-                    {volumeDelta !== null && volumeDelta !== 0 && (
-                      <span className={`ml-1.5 ${volumeDelta > 0 ? "text-sage" : "text-blush"}`}>
-                        {volumeDelta > 0 ? "+" : ""}{volumeDelta}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="bg-card border-l-2 border-rule p-3">
-                  <div className="text-xl font-mono font-bold">
-                    {stats.volume.thisWeek.volume > 0
-                      ? `${(stats.volume.thisWeek.volume / 1000).toFixed(1)}t`
-                      : "0"}
-                  </div>
-                  <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-0.5">
-                    Volume
-                  </div>
-                </div>
-              </div>
-              {topMuscleGroups.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {topMuscleGroups.map(([group, sets]) => (
-                    <span
-                      key={group}
-                      className="text-[11px] font-mono px-2 py-1 bg-paper text-faded uppercase tracking-wider"
-                    >
-                      {group} <span className="text-ink">{sets}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </section>
       )}
 
