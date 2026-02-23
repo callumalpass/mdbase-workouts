@@ -210,10 +210,14 @@ export default function CalendarTab() {
   }, [month]);
 
   const firstDayInMonth = toDateKey(month);
-  const [selectedDay, setSelectedDay] = useState(firstDayInMonth);
+  const [selectedDay, setSelectedDay] = useState(() => toDateKey(new Date()));
 
+  const prevMonthRef = useRef(firstDayInMonth);
   useEffect(() => {
-    setSelectedDay(firstDayInMonth);
+    if (prevMonthRef.current !== firstDayInMonth) {
+      prevMonthRef.current = firstDayInMonth;
+      setSelectedDay(firstDayInMonth);
+    }
   }, [firstDayInMonth]);
 
   const selectedSessions = sessionsByDay[selectedDay] ?? [];
