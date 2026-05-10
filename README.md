@@ -14,24 +14,21 @@ This project is an implementation of [mdbase-spec](https://github.com/callumalpa
 
 The app has three layers:
 
-- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. It communicates with the backend exclusively through JSON API calls. The UI is a four-tab layout (Today, Calendar, History, Chat) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
+- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. It communicates with the backend exclusively through JSON API calls. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
 - **Backend API** (`server/`): A Hono server running on Node. Each resource type (exercises, sessions, plans, plan-templates, quick-logs) has its own route file exposing standard CRUD endpoints. A `/api/today` endpoint aggregates today's plans, sessions, quick logs, and available templates into a single response. The server uses `@callumalpass/mdbase` to read, write, query, and validate markdown records.
 - **Data storage** (`data/`): Plain markdown files organized into folders by type. Each file has YAML frontmatter containing structured fields and an optional markdown body. Type definitions in `data/_types/*.md` declare the schema for each record type. Cross-record references use wikilink syntax (e.g. `[[exercises/bench-press]]`).
 
-An optional chat endpoint (`POST /api/chat/message`) uses the Claude Agent SDK to stream responses over SSE. The agent runs with its working directory set to `data/` and has access to file tools (Read, Write, Edit, Glob, Grep), so it can inspect and modify the same markdown files the app uses.
-
 In development, Vite proxies `/api` requests to the backend. In production, the backend serves the built frontend assets from `dist/`.
 
-## Why `mdbase` works well with Claude tooling
+## Why `mdbase` works well here
 
 - `mdbase` gives the app a typed API (`query`, `read`, `create`, `update`, `delete`) over plain markdown files, so backend code can enforce structure without moving data into a separate database.
-- The same records remain directly readable as files (`data/**/*.md`), which means Claude Code can inspect and edit them with normal file tools.
-- In `server/routes/chat.ts`, Claude Agent SDK runs with `cwd` set to `data/` and file-oriented tools enabled (`Read`, `Write`, `Edit`, `Glob`, `Grep`), so chat operations happen against the same source-of-truth files used by the app.
+- The same records remain directly readable as files (`data/**/*.md`), which keeps the source of truth inspectable and easy to back up.
 - Type definitions in `data/_types/*.md` keep the collection shape explicit for both programmatic access (`mdbase`) and agent/file-based workflows.
 
 ## Frontend features
 
-The UI is organized into four tabs, plus several sheet overlays for data entry.
+The UI is organized into three tabs, plus several sheet overlays for data entry.
 
 ### Today tab
 
@@ -78,14 +75,6 @@ A full-screen overlay used to record a workout. It opens from a plan card ("Star
 - Buttons to add or remove sets beyond the target count.
 - Weight and reps inputs pre-fill from the plan/template targets, falling back to the last-used values from localStorage.
 - A "Finish" screen that shows a summary (total sets completed, elapsed time), and allows the user to optionally override the duration, assign a 1-5 rating, and add notes before saving.
-
-### Chat tab
-
-![Chat tab mobile screenshot](docs/screenshots/mobile-chat.png)
-
-A conversational interface connected to a Claude agent. The user types a message and receives a streamed response rendered as markdown (with GitHub Flavored Markdown and line break support). While the agent works, tool-use indicators appear (e.g. "Using Read...") to show what file operations are happening.
-
-Chat history is persisted locally and tied to a session ID returned by the server. The user can clear the conversation to start a new session. The agent has read and write access to all files in `data/`, so it can answer questions about workout history, create plans, look up exercises, and perform other data operations.
 
 ## Data layout
 
@@ -147,16 +136,13 @@ Base path: `/api`
 - `GET /api/quick-logs?limit=`
 - `POST /api/quick-logs`
 - `GET /api/today`
-- `POST /api/chat/message` (SSE)
 
 ## Requirements
 
 - Node.js 18+
 - npm
-- Optional for chat endpoint: Anthropic API key in environment
-- Optional security env:
+- Optional environment:
   - `CORS_ORIGIN` - comma-separated allowed origins for browser API access
-  - `CHAT_ALLOW_MUTATIONS=true` - allow chat `Write`/`Edit` tools (default is read-only tools)
 
 ## Setup
 
@@ -207,12 +193,12 @@ npm run test:e2e
 ```
 
 Current e2e coverage (`tests/app.e2e.spec.ts`):
-- tab navigation (today, calendar, history, chat)
+- tab navigation (today, calendar, history)
 - quick log flow (create + payload assertion)
 - plan creation flow (exercise selection + payload assertion)
 - session logger flow (set completion + metadata + payload assertion)
 - history pagination and exercise filtering
-- calendar loading and chat streaming flow (including clear/reset)
+- calendar loading
 
 Regenerate mobile screenshots:
 

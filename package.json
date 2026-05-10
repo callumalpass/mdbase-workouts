@@ -18,15 +18,11 @@
     "start": "NODE_ENV=production tsx server/index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.34",
     "@callumalpass/mdbase": "0.2.1",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-markdown": "^10.1.0",
-    "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.1",

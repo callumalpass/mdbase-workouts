@@ -2,13 +2,12 @@ import { useState } from "react";
 import TodayTab from "./components/TodayTab";
 import CalendarTab from "./components/CalendarTab";
 import HistoryTab from "./components/HistoryTab";
-import ChatTab from "./components/ChatTab";
 import SettingsSheet from "./components/SettingsSheet";
 import { haptics } from "./lib/haptics";
 
-type Tab = "today" | "calendar" | "history" | "chat";
+type Tab = "today" | "calendar" | "history";
 
-const TABS: Tab[] = ["today", "calendar", "history", "chat"];
+const TABS: Tab[] = ["today", "calendar", "history"];
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
@@ -38,12 +37,14 @@ export default function App() {
         {tab === "today" && <TodayTab />}
         {tab === "calendar" && <CalendarTab />}
         {tab === "history" && <HistoryTab />}
-        {tab === "chat" && <ChatTab />}
       </main>
       <nav className="shrink-0 flex border-t border-rule bg-card pb-[env(safe-area-inset-bottom)] relative">
         <span
           className="absolute top-0 h-[2px] bg-blush transition-all duration-200 ease-out"
-          style={{ left: `calc(${tabIndex * 25}% + 1rem)`, width: "calc(25% - 2rem)" }}
+          style={{
+            left: `calc(${tabIndex * (100 / TABS.length)}% + 1rem)`,
+            width: `calc(${100 / TABS.length}% - 2rem)`,
+          }}
         />
         {TABS.map((t) => (
           <button

@@ -12,7 +12,6 @@ import plans from "./routes/plans.js";
 import planTemplates from "./routes/plan-templates.js";
 import quickLogs from "./routes/quick-logs.js";
 import today from "./routes/today.js";
-import chat from "./routes/chat.js";
 import settings from "./routes/settings.js";
 import stats from "./routes/stats.js";
 
@@ -61,7 +60,6 @@ async function start() {
   app.route("/api/plan-templates", planTemplates);
   app.route("/api/quick-logs", quickLogs);
   app.route("/api/today", today);
-  app.route("/api/chat", chat);
   app.route("/api/settings", settings);
   app.route("/api/stats", stats);
 

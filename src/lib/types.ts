@@ -154,11 +154,6 @@ export interface LastSessionData {
   sets: SetData[];
 }
 
-export interface ChatMessage {
-  role: "user" | "assistant" | "tool";
-  content: string;
-}
-
 export interface SessionListResponse {
   sessions: Session[];
   total: number;

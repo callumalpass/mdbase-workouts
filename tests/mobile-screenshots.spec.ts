@@ -30,12 +30,5 @@ test.describe("mobile app screenshots", () => {
       path: "docs/screenshots/mobile-history.png",
       fullPage: true,
     });
-
-    await switchTab(page, /chat/i);
-    await page.waitForLoadState("networkidle");
-    await page.screenshot({
-      path: "docs/screenshots/mobile-chat.png",
-      fullPage: true,
-    });
   });
 });

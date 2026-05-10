@@ -5,7 +5,6 @@ export interface MockApiController {
     quickLogs: any[];
     plans: any[];
     sessions: any[];
-    chat: any[];
     sessionListQueries: Array<{ limit: number; offset: number }>;
   };
 }
@@ -59,8 +58,10 @@ interface QuickLogRecord {
   logged_at: string;
 }
 
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
+function localDay(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function mkDate(offsetDays: number, hour = 10): string {
@@ -83,7 +84,7 @@ function json(route: Route, body: unknown, status = 200) {
 }
 
 export async function setupMockApi(page: Page): Promise<MockApiController> {
-  const today = isoDay(new Date());
+  const today = localDay(new Date());
 
   const exercises: ExerciseRecord[] = [
     {
@@ -156,7 +157,6 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
     quickLogs: [] as any[],
     plans: [] as any[],
     sessions: [] as any[],
-    chat: [] as any[],
     sessionListQueries: [] as Array<{ limit: number; offset: number }>,
   };
 
@@ -263,19 +263,6 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
         plans: todaysPlans,
         sessions: todaysSessions,
         quickLogs: todaysQuickLogs,
-      });
-    }
-
-    if (path === "/api/chat/message" && method === "POST") {
-      const payload = JSON.parse(req.postData() || "{}");
-      requests.chat.push(payload);
-      return route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body:
-          'event: session\ndata: {"sessionId":"sess-e2e"}\n\n' +
-          'event: text\ndata: "Mock assistant response."\n\n' +
-          'event: done\ndata: {"subtype":"success"}\n\n',
       });
     }
 

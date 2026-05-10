@@ -17,9 +17,6 @@ test.describe("workout tracker e2e", () => {
 
     await switchTab(page, /history/i);
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
-
-    await switchTab(page, /chat/i);
-    await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
   });
 
   test("quick log flow posts payload and refreshes today", async ({ page }) => {
@@ -135,7 +132,7 @@ test.describe("workout tracker e2e", () => {
     await expect(page.getByText("Squat")).toHaveCount(0);
   });
 
-  test("calendar loads sessions and chat streams assistant reply", async ({ page }) => {
+  test("calendar loads sessions", async ({ page }) => {
     const mock = await setupMockApi(page);
     await page.goto("/");
 
@@ -148,17 +145,5 @@ test.describe("workout tracker e2e", () => {
     await expect(page.getByText("Prev")).toBeVisible();
     await expect(page.getByText("Next")).toBeVisible();
     await expect(page.getByText(/sessions/i)).toBeVisible();
-
-    await switchTab(page, /chat/i);
-    await page.getByPlaceholder("Ask about your workouts...").fill("How was this week?");
-    await page.getByRole("button", { name: "Send" }).click();
-
-    await expect(page.getByText("Mock assistant response.")).toBeVisible();
-    await expect.poll(() => mock.requests.chat.length).toBe(1);
-
-    await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
-    await page.getByRole("button", { name: "Clear" }).click();
-    await expect(page.getByText("Ask me anything")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Clear" })).toHaveCount(0);
   });
 });
