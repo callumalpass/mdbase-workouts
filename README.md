@@ -32,7 +32,7 @@ The UI is organized into three tabs, plus several sheet overlays for data entry.
 
 ### Today tab
 
-![Today tab mobile screenshot](docs/screenshots/mobile-today.png)
+![Today tab mobile screenshot](docs/screenshots/readme-today.png)
 
 The landing screen for daily use. It shows four sections:
 
@@ -45,7 +45,7 @@ A floating action button (+) in the bottom-right corner opens the **quick log sh
 
 ### Calendar tab
 
-![Calendar tab mobile screenshot](docs/screenshots/mobile-calendar.png)
+![Calendar tab mobile screenshot](docs/screenshots/readme-calendar.png)
 
 A month-view calendar for browsing workout history across dates. Each day cell shows colored dot indicators: blue for plans, green for sessions, and pink for quick logs. Users navigate between months with Prev/Next buttons.
 
@@ -53,7 +53,7 @@ Selecting a day displays that date's plans, sessions, and quick logs in a detail
 
 ### History tab
 
-![History tab mobile screenshot](docs/screenshots/mobile-history.png)
+![History tab mobile screenshot](docs/screenshots/readme-history.png)
 
 A two-panel view toggled between "sessions" and "exercises":
 

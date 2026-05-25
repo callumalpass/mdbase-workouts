@@ -13,21 +13,21 @@ test.describe("mobile app screenshots", () => {
     await page.waitForLoadState("networkidle");
 
     await page.screenshot({
-      path: "docs/screenshots/mobile-today.png",
+      path: "docs/screenshots/readme-today.png",
       fullPage: true,
     });
 
     await switchTab(page, /calendar/i);
     await page.waitForLoadState("networkidle");
     await page.screenshot({
-      path: "docs/screenshots/mobile-calendar.png",
+      path: "docs/screenshots/readme-calendar.png",
       fullPage: true,
     });
 
     await switchTab(page, /history/i);
     await page.waitForLoadState("networkidle");
     await page.screenshot({
-      path: "docs/screenshots/mobile-history.png",
+      path: "docs/screenshots/readme-history.png",
       fullPage: true,
     });
   });
