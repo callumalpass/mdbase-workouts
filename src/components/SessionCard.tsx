@@ -8,10 +8,11 @@ interface Props {
 
 export default function SessionCard({ session, onDelete }: Props) {
   return (
-    <div className="relative bg-card border-l-2 border-rule p-4 hover:border-blush transition-colors active:translate-y-px">
+    <div className="relative ledger-card hover:border-blush active:translate-y-px">
       {onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(session.path); }}
+          aria-label={`Delete session from ${formatDate(session.date)}`}
           className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center
             text-faded/50 text-xs hover:text-blush active:text-blush transition-colors"
         >

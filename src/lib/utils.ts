@@ -32,7 +32,7 @@ export function pathToSlug(path: string): string {
   return path.replace(/^.*\//, "").replace(/\.md$/, "");
 }
 
-/** Humanise a slug: bench-press → Bench Press */
+/** Humanise a slug like bench-press into Bench Press. */
 export function slugToName(slug: string): string {
   return slug
     .split("-")
@@ -55,5 +55,5 @@ export function formatSet(set: {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
   if (set.distance != null) return `${set.distance}km`;
-  return "—";
+  return "n/a";
 }

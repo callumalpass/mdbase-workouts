@@ -33,7 +33,7 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 py-2.5 bg-blush text-white text-sm font-medium
+            className="flex-1 py-2.5 bg-blush text-paper text-sm font-medium
               active:scale-[0.97] transition-transform duration-75"
           >
             {confirmLabel}

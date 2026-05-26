@@ -32,14 +32,14 @@ export default function ExercisePicker({ onSelect, recentSlugs = [] }: Props) {
           focus:outline-none focus:border-blush transition-colors"
       />
       {loading ? (
-        <p className="text-sm italic text-faded text-center py-4">Loading...</p>
+        <p className="text-sm italic text-faded text-center py-4">Loading exercises</p>
       ) : (
         <div className="max-h-64 overflow-y-auto -mx-1">
           {sorted.map((ex) => (
             <button
               key={ex.path}
               onClick={() => onSelect(ex)}
-              className="w-full text-left px-3 py-3 border-l-2 border-transparent
+              className="w-full text-left px-3 py-3 border border-transparent
                 hover:bg-card hover:border-blush active:bg-rule/30
                 transition-colors flex items-center gap-3"
             >

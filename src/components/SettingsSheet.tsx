@@ -83,7 +83,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
           <button
             onClick={handleSave}
             disabled={saving || !isDirty}
-            className="flex-1 py-3 bg-blush text-white text-sm font-medium
+            className="flex-1 py-3 bg-blush text-paper text-sm font-medium
               active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
           >
             {saving ? "Saving..." : "Save"}

@@ -2,55 +2,167 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  height: 100dvh;
+@layer base {
+  :root {
+    --color-paper: oklch(93.5% 0.018 78);
+    --color-card: oklch(97% 0.014 78);
+    --color-ink: oklch(24% 0.018 63);
+    --color-faded: oklch(59% 0.018 63);
+    --color-rule: oklch(84% 0.016 74);
+    --color-blush: oklch(62% 0.16 14);
+    --color-ocean: oklch(48% 0.17 265);
+    --color-sage: oklch(58% 0.095 145);
+    --color-amber: oklch(69% 0.14 78);
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  html {
+    height: 100dvh;
+  }
+
+  body {
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      0 env(safe-area-inset-left);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Subtle paper grain */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-blush) 20%, transparent);
+  }
+
+  ::-webkit-scrollbar {
+    width: 3px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-rule);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-blush) !important;
+    outline-offset: 3px;
+  }
+
+  /* Kill number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.4);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
-body {
-  height: 100dvh;
-  overflow: hidden;
-  overscroll-behavior: none;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    0 env(safe-area-inset-left);
-}
+@layer components {
+  .ledger-card {
+    @apply bg-card border border-rule p-4 transition-colors;
+  }
 
-/* Subtle paper grain */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-}
+  .ledger-card-tight {
+    @apply bg-card border border-rule p-3 transition-colors;
+  }
 
-::selection {
-  background: rgba(224, 81, 112, 0.2);
-}
+  .ledger-card-blush {
+    @apply border-blush;
+    background: color-mix(in oklch, var(--color-blush) 5%, var(--color-card));
+  }
 
-::-webkit-scrollbar {
-  width: 3px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #D4CFC7;
-}
+  .ledger-card-ocean {
+    @apply border-ocean;
+    background: color-mix(in oklch, var(--color-ocean) 5%, var(--color-card));
+  }
 
-/* Kill number input spinners */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
-}
+  .ledger-card-sage {
+    @apply border-sage;
+    background: color-mix(in oklch, var(--color-sage) 6%, var(--color-card));
+  }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.4);
+  .ledger-card-amber {
+    @apply border-amber;
+    background: color-mix(in oklch, var(--color-amber) 10%, var(--color-card));
+  }
+
+  .ledger-section-title {
+    @apply relative pl-4 text-sm italic text-faded;
+  }
+
+  .ledger-section-title::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 0.375rem;
+    height: 0.375rem;
+    transform: translateY(-50%) rotate(45deg);
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+  }
+
+  .ledger-mark-blush::before {
+    border-color: var(--color-blush);
+    background: color-mix(in oklch, var(--color-blush) 10%, var(--color-paper));
+  }
+
+  .ledger-mark-ocean::before {
+    border-color: var(--color-ocean);
+    background: color-mix(in oklch, var(--color-ocean) 9%, var(--color-paper));
+  }
+
+  .ledger-mark-sage::before {
+    border-color: var(--color-sage);
+    background: color-mix(in oklch, var(--color-sage) 10%, var(--color-paper));
+  }
+
+  .ledger-mark-amber::before {
+    border-color: var(--color-amber);
+    background: color-mix(in oklch, var(--color-amber) 12%, var(--color-paper));
+  }
 }

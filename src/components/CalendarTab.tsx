@@ -45,6 +45,7 @@ export default function CalendarTab() {
   const [loading, setLoading] = useState(true);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const { allExercises } = useExercises();
   const [cheatDaySet, setCheatDaySet] = useState<Set<string>>(new Set());
   const [month, setMonth] = useState(() => {
@@ -228,7 +229,7 @@ export default function CalendarTab() {
     <div className="p-5 pb-20 space-y-6">
       <h1 className="text-4xl font-bold tracking-tight pt-3">Calendar</h1>
 
-      <section className="bg-card border-l-2 border-blush p-4">
+      <section className="ledger-card ledger-card-blush">
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={() =>
@@ -314,13 +315,16 @@ export default function CalendarTab() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm italic text-faded border-l-2 border-blush pl-3">
+          <h2 className="ledger-section-title ledger-mark-blush">
             {selectedDayLabel(selectedDay)}
           </h2>
         </div>
+        {deleteError && (
+          <p className="text-sm text-blush">{deleteError}</p>
+        )}
 
         {loading ? (
-          <p className="text-sm italic text-faded text-center py-8">Loading...</p>
+          <p className="text-sm italic text-faded text-center py-8">Reading the month</p>
         ) : (
           <>
             <div className="space-y-3">
@@ -363,7 +367,7 @@ export default function CalendarTab() {
                 selectedQuickLogs.map((log) => (
                   <div
                     key={log.path}
-                    className="flex items-center gap-3 bg-card border-l-2 border-rule px-4 py-3"
+                    className="flex items-center gap-3 ledger-card px-4 py-3"
                   >
                     <div className="flex-1 min-w-0">
                       <span className="text-sm font-medium">
@@ -399,9 +403,11 @@ export default function CalendarTab() {
           if (!deletingPath) return;
           try {
             await api.sessions.delete(pathToSlug(deletingPath));
+            setDeleteError("");
             loadCalendarData();
           } catch (err) {
-            console.error("Failed to delete session:", err);
+            const message = err instanceof Error ? err.message : "Could not delete this session.";
+            setDeleteError(message);
           }
           setDeletingPath(null);
         }}

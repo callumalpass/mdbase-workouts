@@ -10,7 +10,7 @@ interface Props {
 
 export default function TemplateCard({ template, onStart, onEdit, onDelete }: Props) {
   return (
-    <div className="bg-card border-l-2 border-ocean p-4 active:translate-y-px transition-transform">
+    <div className="ledger-card ledger-card-ocean active:translate-y-px transition-transform">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">{template.title}</h3>
         {(onEdit || onDelete) && (
@@ -18,6 +18,7 @@ export default function TemplateCard({ template, onStart, onEdit, onDelete }: Pr
             {onEdit && (
               <button
                 onClick={(e) => { e.stopPropagation(); onEdit(template); }}
+                aria-label={`Edit ${template.title}`}
                 className="text-faded/50 text-sm hover:text-ocean active:text-ocean transition-colors p-2"
               >
                 ✎
@@ -26,6 +27,7 @@ export default function TemplateCard({ template, onStart, onEdit, onDelete }: Pr
             {onDelete && (
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(template); }}
+                aria-label={`Delete ${template.title}`}
                 className="text-faded/50 text-sm hover:text-blush active:text-blush transition-colors p-2 -mr-2"
               >
                 ✕
@@ -57,7 +59,7 @@ export default function TemplateCard({ template, onStart, onEdit, onDelete }: Pr
 
       <button
         onClick={() => onStart(template)}
-        className="w-full py-3 bg-ocean text-white text-xs font-mono font-medium
+        className="w-full py-3 bg-ocean text-paper text-xs font-mono font-medium
           uppercase tracking-[0.15em] active:scale-[0.97] transition-transform duration-75"
       >
         Start

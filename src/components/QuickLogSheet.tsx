@@ -22,6 +22,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
   const [distance, setDistance] = useState("");
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
+  const [error, setError] = useState("");
   const { getLastUsed, saveLastUsed } = useLastUsed();
   const [recentSlugs, setRecentSlugs] = useState<string[]>([]);
 
@@ -31,6 +32,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
     setReps("");
     setDuration("");
     setDistance("");
+    setError("");
     onClose();
   }, [onClose]);
 
@@ -57,6 +59,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
 
   const handleSelectExercise = (ex: Exercise) => {
     setExercise(ex);
+    setError("");
     const slug = pathToSlug(ex.path);
     const last = getLastUsed(slug);
     if (last.weight != null) setWeight(String(last.weight));
@@ -65,7 +68,12 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
 
   const handleLog = async () => {
     if (!exercise) return;
+    if (![reps, weight, duration, distance].some((value) => value.trim())) {
+      setError("Add at least one set value before logging.");
+      return;
+    }
     setSaving(true);
+    setError("");
     const slug = pathToSlug(exercise.path);
     const data: CreateQuickLogInput = { exercise: slug };
     if (reps) data.reps = Number(reps);
@@ -81,7 +89,8 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
       });
       setShowStamp(true);
     } catch (err) {
-      console.error("Failed to log:", err);
+      const message = err instanceof Error ? err.message : "Could not log this set.";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -131,6 +140,10 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
                   onDistanceChange={setDistance}
                 />
 
+                {error && (
+                  <p className="mt-4 text-sm text-blush">{error}</p>
+                )}
+
                 <div className="flex gap-2 mt-5">
                   <button
                     onClick={() => setExercise(null)}
@@ -142,7 +155,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
                   <button
                     onClick={handleLog}
                     disabled={saving}
-                    className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                    className="flex-1 py-3 bg-blush text-paper text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {saving ? "Logging..." : "Log"}

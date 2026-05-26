@@ -47,7 +47,7 @@ export default function WeeklySetsChart({ weeks, targetSets }: Props) {
       style={{ scrollbarWidth: "none" }}
     >
       <div style={{ paddingLeft: 20, paddingRight: 20, width: totalWidth + 40 }}>
-        {/* Count label row — always takes up 16px so bars don't shift */}
+        {/* Count label row always takes up 16px so bars don't shift. */}
         <div className="flex" style={{ height: 16, gap: GAP }}>
           {weeks.map((week) => (
             <div
@@ -62,12 +62,15 @@ export default function WeeklySetsChart({ weeks, targetSets }: Props) {
           ))}
         </div>
 
-        {/* Bars — full column height is tappable */}
+        {/* Full column height is tappable. */}
         <div className="relative flex" style={{ height: CHART_H, gap: GAP }}>
           {/* 80 sets/week target line */}
           <div
             className="absolute left-0 right-0 pointer-events-none"
-            style={{ top: targetLineTop, borderTop: "1px dashed rgba(145,138,130,0.5)" }}
+            style={{
+              top: targetLineTop,
+              borderTop: "1px dashed color-mix(in oklch, var(--color-faded) 50%, transparent)",
+            }}
           />
           {weeks.map((week, i) => {
             const height =
@@ -87,7 +90,9 @@ export default function WeeklySetsChart({ weeks, targetSets }: Props) {
                   width: COL_W,
                   height: CHART_H,
                   flexShrink: 0,
-                  boxShadow: isNewYear ? "-1px 0 0 0 rgba(145,138,130,0.5)" : undefined,
+                  boxShadow: isNewYear
+                    ? "-1px 0 0 0 color-mix(in oklch, var(--color-faded) 50%, transparent)"
+                    : undefined,
                 }}
               >
                 <div
@@ -120,7 +125,9 @@ export default function WeeklySetsChart({ weeks, targetSets }: Props) {
                 style={{
                   width: COL_W,
                   flexShrink: 0,
-                  boxShadow: isNewYear ? "-1px 0 0 0 rgba(145,138,130,0.5)" : undefined,
+                  boxShadow: isNewYear
+                    ? "-1px 0 0 0 color-mix(in oklch, var(--color-faded) 50%, transparent)"
+                    : undefined,
                 }}
               >
                 {isNewYear

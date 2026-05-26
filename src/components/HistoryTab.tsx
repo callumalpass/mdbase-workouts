@@ -16,6 +16,7 @@ export default function HistoryTab() {
   const { sessions, loading: sessionsLoading, hasMore, loadMore, refresh } = useSessions();
   const { exercises, loading: exercisesLoading, search, setSearch } = useExercises();
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   if (selectedSlug) {
     return <ExerciseDetailView slug={selectedSlug} onBack={() => setSelectedSlug(null)} />;
@@ -26,9 +27,11 @@ export default function HistoryTab() {
     const id = pathToSlug(deletingPath);
     try {
       await api.sessions.delete(id);
+      setDeleteError("");
       refresh();
     } catch (err) {
-      console.error("Failed to delete session:", err);
+      const message = err instanceof Error ? err.message : "Could not delete this session.";
+      setDeleteError(message);
     }
     setDeletingPath(null);
   };
@@ -36,6 +39,9 @@ export default function HistoryTab() {
   return (
     <div className="p-5 pb-20 space-y-6">
       <h1 className="text-4xl font-bold tracking-tight pt-3">History</h1>
+      {deleteError && (
+        <p className="text-sm text-blush">{deleteError}</p>
+      )}
 
       {/* View toggle */}
       <div className="flex border-b border-rule">
@@ -58,10 +64,10 @@ export default function HistoryTab() {
       {view === "sessions" && (
         <div className="space-y-3">
           {sessionsLoading ? (
-            <p className="text-sm italic text-faded text-center py-8">Loading...</p>
+            <p className="text-sm italic text-faded text-center py-8">Opening the archive</p>
           ) : sessions.length === 0 ? (
             <p className="text-sm italic text-faded text-center py-8">
-              No sessions yet
+              No sessions in the archive yet
             </p>
           ) : (
             <>
@@ -98,17 +104,23 @@ export default function HistoryTab() {
               focus:outline-none focus:border-blush transition-colors"
           />
           {exercisesLoading ? (
-            <p className="text-sm italic text-faded text-center py-8">Loading...</p>
+            <p className="text-sm italic text-faded text-center py-8">Loading exercises</p>
           ) : (
-            <div className="space-y-3">
-              {exercises.map((ex) => (
-                <ExerciseCard
-                  key={ex.path}
-                  exercise={ex}
-                  onClick={() => setSelectedSlug(pathToSlug(ex.path))}
-                />
-              ))}
-            </div>
+            exercises.length === 0 ? (
+              <p className="text-sm italic text-faded text-center py-8">
+                No exercises match that search
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {exercises.map((ex) => (
+                  <ExerciseCard
+                    key={ex.path}
+                    exercise={ex}
+                    onClick={() => setSelectedSlug(pathToSlug(ex.path))}
+                  />
+                ))}
+              </div>
+            )
           )}
         </div>
       )}

@@ -47,7 +47,7 @@ export default function Stopwatch({ onStop }: Props) {
           <button
             type="button"
             onClick={start}
-            className="px-5 py-2 bg-ocean text-white text-sm font-mono uppercase tracking-wider rounded active:opacity-80 transition-opacity"
+            className="px-5 py-2 bg-ocean text-paper text-sm font-mono uppercase tracking-wider rounded active:opacity-80 transition-opacity"
           >
             {elapsed > 0 ? "Resume" : "Start"}
           </button>
@@ -55,7 +55,7 @@ export default function Stopwatch({ onStop }: Props) {
           <button
             type="button"
             onClick={stop}
-            className="px-5 py-2 bg-blush text-white text-sm font-mono uppercase tracking-wider rounded active:opacity-80 transition-opacity"
+            className="px-5 py-2 bg-blush text-paper text-sm font-mono uppercase tracking-wider rounded active:opacity-80 transition-opacity"
           >
             Stop
           </button>

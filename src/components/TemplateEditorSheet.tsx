@@ -30,6 +30,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
   const [exercises, setExercises] = useState<TemplateExerciseEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
+  const [error, setError] = useState("");
 
   const isEditing = !!template;
 
@@ -37,6 +38,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
   useEffect(() => {
     if (template && allExercises.length > 0) {
       setTitle(template.title);
+      setError("");
       setExercises(
         (template.exercises || []).map((ex) => {
           const slug = parseWikilink(ex.exercise);
@@ -52,6 +54,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
     } else if (!template) {
       setTitle("");
       setExercises([]);
+      setError("");
     }
   }, [template, allExercises]);
 
@@ -59,6 +62,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
     setStep("details");
     setTitle("");
     setExercises([]);
+    setError("");
     onClose();
   }, [onClose]);
 
@@ -101,6 +105,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
   const handleSave = async () => {
     if (!title.trim() || exercises.length === 0) return;
     setSaving(true);
+    setError("");
     try {
       const payload = {
         title: title.trim(),
@@ -119,7 +124,8 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
       }
       setShowStamp(true);
     } catch (err) {
-      console.error("Failed to save template:", err);
+      const message = err instanceof Error ? err.message : "Could not save this template.";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -201,7 +207,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                   <button
                     onClick={() => setStep(exercises.length > 0 ? "exercises" : "picking")}
                     disabled={!canProceedToExercises}
-                    className="flex-1 py-3 bg-ocean text-white text-sm font-medium
+                    className="flex-1 py-3 bg-ocean text-paper text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {exercises.length > 0 ? "Edit Exercises" : "Add Exercises"}
@@ -251,7 +257,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                     {exercises.map((entry, index) => (
                       <div
                         key={`${entry.exercise.path}-${index}`}
-                        className="bg-card border-l-2 border-rule p-3 active:translate-y-px transition-transform"
+                        className="ledger-card-tight active:translate-y-px transition-transform"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -259,6 +265,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                               <button
                                 onClick={() => handleMoveExercise(index, -1)}
                                 disabled={index === 0}
+                                aria-label={`Move ${entry.exercise.name} up`}
                                 className="text-faded text-[10px] font-mono leading-none disabled:opacity-20"
                               >
                                 ▲
@@ -266,6 +273,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                               <button
                                 onClick={() => handleMoveExercise(index, 1)}
                                 disabled={index === exercises.length - 1}
+                                aria-label={`Move ${entry.exercise.name} down`}
                                 className="text-faded text-[10px] font-mono leading-none disabled:opacity-20"
                               >
                                 ▼
@@ -282,6 +290,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                           </div>
                           <button
                             onClick={() => handleRemoveExercise(index)}
+                            aria-label={`Remove ${entry.exercise.name}`}
                             className="text-faded hover:text-blush text-xs p-1 transition-colors"
                           >
                             ✕
@@ -327,7 +336,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                                 onChange={(e) =>
                                   handleUpdateExercise(index, "target_weight", e.target.value)
                                 }
-                                placeholder="—"
+                                placeholder="-"
                                 className={smallInputClass}
                               />
                             </div>
@@ -357,12 +366,15 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
                   <button
                     onClick={handleSave}
                     disabled={!canSave || saving}
-                    className="flex-1 py-3 bg-ocean text-white text-sm font-medium
+                    className="flex-1 py-3 bg-ocean text-paper text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {saving ? "Saving..." : isEditing ? "Save Template" : "Create Template"}
                   </button>
                 </div>
+                {error && (
+                  <p className="mt-3 text-sm text-blush">{error}</p>
+                )}
               </>
             )}
           </div>

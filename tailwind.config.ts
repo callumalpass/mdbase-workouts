@@ -5,15 +5,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        paper: "#ECE8E1",
-        card: "#F5F2EC",
-        ink: "#1C1917",
-        faded: "#918A82",
-        rule: "#D4CFC7",
-        blush: "#E05170",
-        ocean: "#3356D0",
-        sage: "#5A9668",
-        amber: "#D4940A",
+        paper: "oklch(93.5% 0.018 78 / <alpha-value>)",
+        card: "oklch(97% 0.014 78 / <alpha-value>)",
+        ink: "oklch(24% 0.018 63 / <alpha-value>)",
+        faded: "oklch(59% 0.018 63 / <alpha-value>)",
+        rule: "oklch(84% 0.016 74 / <alpha-value>)",
+        blush: "oklch(62% 0.16 14 / <alpha-value>)",
+        ocean: "oklch(48% 0.17 265 / <alpha-value>)",
+        sage: "oklch(58% 0.095 145 / <alpha-value>)",
+        amber: "oklch(69% 0.14 78 / <alpha-value>)",
       },
       keyframes: {
         slideUp: {

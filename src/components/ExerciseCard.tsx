@@ -14,9 +14,11 @@ export default function ExerciseCard({ exercise, onClick }: Props) {
   };
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`bg-card border-l-2 border-rule p-4 hover:border-blush transition-colors active:translate-y-px${onClick ? " cursor-pointer" : ""}`}
+      className={`w-full text-left ledger-card hover:border-blush active:translate-y-px${onClick ? " cursor-pointer" : ""}`}
+      disabled={!onClick}
     >
       <div className="flex items-center justify-between mb-1.5">
         <h3 className="text-sm font-semibold">{exercise.name}</h3>
@@ -39,6 +41,6 @@ export default function ExerciseCard({ exercise, onClick }: Props) {
           {trackingLabels[exercise.tracking] || exercise.tracking}
         </span>
       </div>
-    </div>
+    </button>
   );
 }

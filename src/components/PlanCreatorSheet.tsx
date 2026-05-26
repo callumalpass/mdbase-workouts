@@ -29,12 +29,14 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const [exercises, setExercises] = useState<PlanExerciseEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
+  const [error, setError] = useState("");
 
   const handleClose = useCallback(() => {
     setStep("details");
     setTitle("");
     setDate(todayLocalDateKey());
     setExercises([]);
+    setError("");
     onClose();
   }, [onClose]);
 
@@ -77,6 +79,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const handleSave = async () => {
     if (!title.trim() || exercises.length === 0) return;
     setSaving(true);
+    setError("");
     try {
       await api.plans.create({
         date,
@@ -90,7 +93,8 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
       });
       setShowStamp(true);
     } catch (err) {
-      console.error("Failed to create plan:", err);
+      const message = err instanceof Error ? err.message : "Could not create this plan.";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -180,7 +184,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   <button
                     onClick={() => setStep(exercises.length > 0 ? "exercises" : "picking")}
                     disabled={!canProceedToExercises}
-                    className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                    className="flex-1 py-3 bg-blush text-paper text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {exercises.length > 0 ? "Edit Exercises" : "Add Exercises"}
@@ -215,12 +219,15 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                     <button
                       onClick={handleSave}
                       disabled={!canSave || saving}
-                      className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                      className="flex-1 py-3 bg-blush text-paper text-sm font-medium
                         active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                     >
                       {saving ? "Creating..." : "Create Plan"}
                     </button>
                   </div>
+                )}
+                {error && (
+                  <p className="mt-3 text-sm text-blush">{error}</p>
                 )}
               </>
             )}
@@ -249,7 +256,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                     {exercises.map((entry, index) => (
                       <div
                         key={`${entry.exercise.path}-${index}`}
-                        className="bg-card border-l-2 border-rule p-3 active:translate-y-px transition-transform"
+                        className="ledger-card-tight active:translate-y-px transition-transform"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -257,6 +264,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                               <button
                                 onClick={() => handleMoveExercise(index, -1)}
                                 disabled={index === 0}
+                                aria-label={`Move ${entry.exercise.name} up`}
                                 className="text-faded text-[10px] font-mono leading-none disabled:opacity-20"
                               >
                                 ▲
@@ -264,6 +272,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                               <button
                                 onClick={() => handleMoveExercise(index, 1)}
                                 disabled={index === exercises.length - 1}
+                                aria-label={`Move ${entry.exercise.name} down`}
                                 className="text-faded text-[10px] font-mono leading-none disabled:opacity-20"
                               >
                                 ▼
@@ -280,6 +289,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                           </div>
                           <button
                             onClick={() => handleRemoveExercise(index)}
+                            aria-label={`Remove ${entry.exercise.name}`}
                             className="text-faded hover:text-blush text-xs p-1 transition-colors"
                           >
                             ✕
@@ -326,7 +336,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                                 onChange={(e) =>
                                   handleUpdateExercise(index, "target_weight", e.target.value)
                                 }
-                                placeholder="—"
+                                placeholder="-"
                                 className={smallInputClass}
                               />
                             </div>
@@ -356,12 +366,15 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                   <button
                     onClick={handleSave}
                     disabled={!canSave || saving}
-                    className="flex-1 py-3 bg-blush text-white text-sm font-medium
+                    className="flex-1 py-3 bg-blush text-paper text-sm font-medium
                       active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
                   >
                     {saving ? "Creating..." : "Create Plan"}
                   </button>
                 </div>
+                {error && (
+                  <p className="mt-3 text-sm text-blush">{error}</p>
+                )}
               </>
             )}
           </div>

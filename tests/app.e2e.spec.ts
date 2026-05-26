@@ -23,7 +23,7 @@ test.describe("workout tracker e2e", () => {
     const mock = await setupMockApi(page);
     await page.goto("/");
 
-    await page.getByRole("button", { name: /^\+$/ }).click();
+    await page.getByRole("button", { name: /quick log/i }).click();
     await expect(page.getByRole("heading", { name: "Quick Log", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: /squat/i }).click();
@@ -31,7 +31,7 @@ test.describe("workout tracker e2e", () => {
     const numericInputs = page.locator('input[type="number"]');
     await numericInputs.nth(0).fill("100");
     await numericInputs.nth(1).fill("5");
-    await page.getByRole("button", { name: "Log" }).click();
+    await page.getByRole("button", { name: "Log", exact: true }).click();
 
     await expect.poll(() => mock.requests.quickLogs.length).toBe(1);
     expect(mock.requests.quickLogs[0]).toMatchObject({

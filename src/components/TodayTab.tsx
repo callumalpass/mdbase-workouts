@@ -34,6 +34,7 @@ export default function TodayTab() {
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState<PlanTemplate | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     api.stats.get(getUserTimeZone()).then(setStats).catch(() => {});
@@ -64,7 +65,7 @@ export default function TodayTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm italic text-faded">Loading...</p>
+        <p className="text-sm italic text-faded">Opening today&apos;s log</p>
       </div>
     );
   }
@@ -98,16 +99,19 @@ export default function TodayTab() {
           })}
         </p>
       </div>
+      {deleteError && (
+        <p className="text-sm text-blush">{deleteError}</p>
+      )}
 
       {/* Streak widget */}
       {stats && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border-l-2 border-sage p-4">
+          <div className="ledger-card ledger-card-sage">
             <div className="text-2xl font-mono font-bold text-sage">
               {stats.streak.currentStreak}
             </div>
             <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
-              Day Streak
+              Current Run
             </div>
             {stats.streak.bankedCheatDays > 0 && (
               <div className="text-[11px] font-mono text-amber mt-1">
@@ -115,7 +119,7 @@ export default function TodayTab() {
               </div>
             )}
           </div>
-          <div className="bg-card border-l-2 border-blush p-4">
+          <div className="ledger-card ledger-card-blush">
             <div className="text-2xl font-mono font-bold text-blush">
               {stats.streak.thisWeekSessions}
             </div>
@@ -130,7 +134,7 @@ export default function TodayTab() {
       {weeklyStats && weeklyStats.weeks.length > 1 && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm italic text-faded border-l-2 border-sage pl-3">
+            <h2 className="ledger-section-title ledger-mark-sage">
               Sets / week
             </h2>
             {editingTarget ? (
@@ -169,14 +173,14 @@ export default function TodayTab() {
       {/* PR Feed */}
       {stats && stats.prs.length > 0 && (
         <section>
-          <h2 className="text-sm italic text-faded border-l-2 border-blush pl-3 mb-3">
+          <h2 className="ledger-section-title ledger-mark-blush mb-3">
             New PRs
           </h2>
           <div className="space-y-2">
             {stats.prs.map((pr, i) => (
               <div
                 key={`${pr.exercise}-${pr.type}-${i}`}
-                className="bg-card border-l-2 border-blush p-3 flex items-center justify-between animate-fade-slide-in"
+                className="ledger-card-tight ledger-card-blush flex items-center justify-between animate-fade-slide-in"
                 style={{ animationDelay: `${i * 50}ms` }}
               >
                 <div>
@@ -210,7 +214,7 @@ export default function TodayTab() {
               >
                 ▶
               </span>
-              <h2 className="text-sm italic text-faded border-l-2 border-ocean pl-3">
+              <h2 className="ledger-section-title ledger-mark-ocean">
                 Templates
               </h2>
             </button>
@@ -242,11 +246,11 @@ export default function TodayTab() {
         </section>
       )}
 
-      {/* No templates yet — show create button */}
+      {/* No templates yet, show create button. */}
       {(!data.templates || data.templates.length === 0) && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm italic text-faded border-l-2 border-ocean pl-3">
+            <h2 className="ledger-section-title ledger-mark-ocean">
               Templates
             </h2>
             <button
@@ -262,7 +266,7 @@ export default function TodayTab() {
       {/* Plans */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm italic text-faded border-l-2 border-blush pl-3">
+          <h2 className="ledger-section-title ledger-mark-blush">
             Planned
           </h2>
           <button
@@ -301,12 +305,12 @@ export default function TodayTab() {
       {/* Today's sessions */}
       {data.sessions.length > 0 && (
         <section>
-          <h2 className="text-sm italic text-faded border-l-2 border-sage pl-3 mb-3">
+          <h2 className="ledger-section-title ledger-mark-sage mb-3">
             Completed
           </h2>
           <div className="space-y-3">
             {data.sessions.map((s, i) => (
-              <div key={s.path} className="bg-card border-l-2 border-sage p-4 animate-fade-slide-in active:translate-y-px transition-transform" style={{ animationDelay: `${i * 50}ms` }}>
+              <div key={s.path} className="ledger-card ledger-card-sage animate-fade-slide-in active:translate-y-px transition-transform" style={{ animationDelay: `${i * 50}ms` }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold">{formatTime(s.date)}</span>
                   {s.duration_minutes && (
@@ -332,7 +336,7 @@ export default function TodayTab() {
       {/* Quick logs */}
       {data.quickLogs.length > 0 && (
         <section>
-          <h2 className="text-sm italic text-faded border-l-2 border-ocean pl-3 mb-3">
+          <h2 className="ledger-section-title ledger-mark-ocean mb-3">
             Quick Logs
           </h2>
           <div className="divide-y divide-rule">
@@ -361,15 +365,16 @@ export default function TodayTab() {
 
       {!hasContent && (
         <div className="text-center py-16">
-          <p className="text-faded italic mb-1">Nothing logged today</p>
-          <p className="text-faded/50 text-xs font-mono uppercase tracking-widest">Tap + to start</p>
+          <p className="text-faded italic mb-1">Today&apos;s page is blank</p>
+          <p className="text-faded/50 text-xs font-mono uppercase tracking-widest">Tap + to make the first mark</p>
         </div>
       )}
 
       {/* FAB */}
       <button
         onClick={() => { haptics.tap(); setShowQuickLog(true); }}
-        className="fixed bottom-20 right-5 w-14 h-14 bg-blush text-white
+        aria-label="Quick log"
+        className="fixed bottom-20 right-5 w-14 h-14 bg-blush text-paper
           flex items-center justify-center text-2xl font-light
           active:scale-90 active:rotate-[-3deg] transition-transform duration-75 z-40"
       >
@@ -404,9 +409,11 @@ export default function TodayTab() {
           if (!deletingTemplate) return;
           try {
             await api.planTemplates.delete(pathToSlug(deletingTemplate.path));
+            setDeleteError("");
             refresh();
           } catch (err) {
-            console.error("Failed to delete template:", err);
+            const message = err instanceof Error ? err.message : "Could not delete this template.";
+            setDeleteError(message);
           }
           setDeletingTemplate(null);
         }}

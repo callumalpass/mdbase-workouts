@@ -21,7 +21,7 @@ function playTimerBeep() {
     // Clean up after beeps finish
     setTimeout(() => ctx.close(), 1000);
   } catch {
-    // Audio not available — haptics fallback already handled
+    // Audio not available; haptics fallback already handled.
   }
 }
 

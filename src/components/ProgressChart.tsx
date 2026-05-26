@@ -119,14 +119,14 @@ export default function ProgressChart({ entries, tracking }: Props) {
         onTouchStart={() => setTooltip(null)}
       >
         {/* Fill under curve */}
-        <polygon points={fillPoints} fill="#E05170" opacity="0.1" />
+        <polygon points={fillPoints} fill="var(--color-blush)" opacity="0.1" />
 
         {/* e1RM dashed line */}
         {e1rmLine && (
           <polyline
             points={e1rmLine}
             fill="none"
-            stroke="#5A9668"
+            stroke="var(--color-sage)"
             strokeWidth="0.3"
             strokeDasharray="1 0.8"
             vectorEffect="non-scaling-stroke"
@@ -137,7 +137,7 @@ export default function ProgressChart({ entries, tracking }: Props) {
         <polyline
           points={linePoints}
           fill="none"
-          stroke="#E05170"
+          stroke="var(--color-blush)"
           strokeWidth="0.5"
           vectorEffect="non-scaling-stroke"
         />
@@ -149,7 +149,7 @@ export default function ProgressChart({ entries, tracking }: Props) {
             cx={scaleX(i)}
             cy={scaleY(p.value)}
             r="0.8"
-            fill="#E05170"
+            fill="var(--color-blush)"
             className="cursor-pointer"
             onPointerDown={(e) => {
               const svg = e.currentTarget.ownerSVGElement!;
@@ -169,7 +169,7 @@ export default function ProgressChart({ entries, tracking }: Props) {
             y={H - 1}
             textAnchor="middle"
             fontSize="2.5"
-            fill="#918A82"
+            fill="var(--color-faded)"
             style={{ fontFamily: "'IBM Plex Mono', monospace" }}
           >
             {formatDateLabel(points[idx].date)}

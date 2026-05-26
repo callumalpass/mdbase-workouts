@@ -33,7 +33,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         <button onClick={onBack} className="text-xs font-mono uppercase tracking-[0.15em] text-blush mb-6">
           &larr; Back
         </button>
-        <p className="text-sm italic text-faded text-center py-8">Loading...</p>
+        <p className="text-sm italic text-faded text-center py-8">Opening exercise record</p>
       </div>
     );
   }
@@ -121,7 +121,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
     return (
       <div className="grid grid-cols-2 gap-3">
         {items.map((item) => (
-          <div key={item.label} className="bg-card border-l-2 border-blush p-4">
+          <div key={item.label} className="ledger-card ledger-card-blush">
             <div className="text-xl font-mono text-ink">{item.value}</div>
             <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
               {item.label}
@@ -133,11 +133,11 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
   }
 
   function renderEntry(entry: ExerciseHistoryEntry, i: number) {
-    const borderColor = entry.source === "session" ? "border-sage" : "border-ocean";
+    const cardTone = entry.source === "session" ? "ledger-card-sage" : "ledger-card-ocean";
     const badgeColor = entry.source === "session" ? "text-sage" : "text-ocean";
 
     return (
-      <div key={i} className={`bg-card border-l-2 ${borderColor} p-4`}>
+      <div key={i} className={`ledger-card ${cardTone}`}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold">{formatDate(entry.date)}</span>
           <div className="flex items-center gap-2">
@@ -229,7 +229,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
                     onClick={() => setEditEquipment(eq)}
                     className={`text-[11px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
                       editEquipment === eq
-                        ? "bg-blush text-white"
+                        ? "bg-blush text-paper"
                         : "bg-paper text-faded border border-rule"
                     }`}
                   >
@@ -250,7 +250,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
                     onClick={() => setEditTracking(opt.value)}
                     className={`text-[11px] font-mono uppercase tracking-[0.15em] px-2 py-1 transition-colors ${
                       editTracking === opt.value
-                        ? "bg-blush text-white"
+                        ? "bg-blush text-paper"
                         : "bg-paper text-faded border border-rule"
                     }`}
                   >
@@ -278,7 +278,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
               <button
                 onClick={saveEdit}
                 disabled={saving}
-                className="px-4 py-2 bg-blush text-white text-xs font-mono uppercase tracking-[0.15em]
+                className="px-4 py-2 bg-blush text-paper text-xs font-mono uppercase tracking-[0.15em]
                   disabled:opacity-50 transition-opacity"
               >
                 {saving ? "Saving..." : "Save"}

@@ -48,6 +48,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const [duration, setDuration] = useState("");
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState("");
+  const [saveError, setSaveError] = useState("");
   const startTimeRef = useRef(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const { getLastUsed, saveLastUsed } = useLastUsed();
@@ -242,6 +243,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError("");
     const planSlug = plan ? pathToSlug(plan.path) : null;
     const elapsedMin = Math.round((Date.now() - startTimeRef.current) / 60000);
     const finalDuration = duration ? Number(duration) : elapsedMin > 0 ? elapsedMin : undefined;
@@ -282,7 +284,8 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
       localStorage.removeItem(SESSION_KEY);
       setShowStamp(true);
     } catch (err) {
-      console.error("Failed to save session:", err);
+      const message = err instanceof Error ? err.message : "Could not save this session.";
+      setSaveError(message);
     } finally {
       setSaving(false);
     }
@@ -320,7 +323,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          <div className="bg-card border-l-2 border-blush p-4 space-y-4">
+          <div className="ledger-card ledger-card-blush space-y-4">
             <h3 className="text-sm font-semibold">{source.title}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-paper p-4 text-center">
@@ -340,7 +343,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
 
           <div>
             <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">
-              Duration (min) — blank uses timer
+              Duration (min), blank uses timer
             </label>
             <input
               type="number"
@@ -387,10 +390,13 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         </div>
 
         <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border-t border-rule bg-card">
+          {saveError && (
+            <p className="mb-3 text-sm text-blush">{saveError}</p>
+          )}
           <button
             onClick={handleSave}
             disabled={saving || totalSetsCompleted === 0}
-            className="w-full py-3.5 bg-blush text-white text-sm font-semibold
+            className="w-full py-3.5 bg-blush text-paper text-sm font-semibold
               active:scale-[0.97] transition-transform duration-75 disabled:opacity-30"
           >
             {saving
@@ -481,7 +487,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
               onClick={() => setActiveIndex(i)}
               className={`shrink-0 px-3 py-3 text-xs font-medium transition-colors whitespace-nowrap ${
                 i === activeIndex
-                  ? "bg-blush text-white"
+                  ? "bg-blush text-paper"
                   : allDone
                   ? "bg-sage/10 text-sage border border-sage/30"
                   : done > 0
@@ -689,14 +695,15 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
               return (
                 <div
                   key={log.slug}
-                  className={`flex items-center gap-3 bg-card border-l-2 p-3 ${
-                    i === activeIndex ? "border-blush" : "border-rule"
+                  className={`flex items-center gap-3 ledger-card-tight ${
+                    i === activeIndex ? "ledger-card-blush" : ""
                   }`}
                 >
                   <div className="flex flex-col gap-0.5">
                     <button
                       onClick={() => handleMoveExercise(i, -1)}
                       disabled={i === 0}
+                      aria-label={`Move ${log.name} up`}
                       className="text-faded text-sm font-mono leading-none disabled:opacity-20 active:text-ink px-1"
                     >
                       ▲
@@ -704,6 +711,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
                     <button
                       onClick={() => handleMoveExercise(i, 1)}
                       disabled={i === exerciseLogs.length - 1}
+                      aria-label={`Move ${log.name} down`}
                       className="text-faded text-sm font-mono leading-none disabled:opacity-20 active:text-ink px-1"
                     >
                       ▼
@@ -743,7 +751,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         {activeIndex < exerciseLogs.length - 1 ? (
           <button
             onClick={() => setActiveIndex((i) => Math.min(exerciseLogs.length - 1, i + 1))}
-            className="flex-1 py-3 bg-blush text-white text-sm font-medium
+            className="flex-1 py-3 bg-blush text-paper text-sm font-medium
               active:scale-[0.97] transition-transform duration-75"
           >
             Next
@@ -751,7 +759,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         ) : (
           <button
             onClick={() => { setRestTimerActive(false); setShowFinish(true); }}
-            className="flex-1 py-3 bg-blush text-white text-sm font-medium
+            className="flex-1 py-3 bg-blush text-paper text-sm font-medium
               active:scale-[0.97] transition-transform duration-75"
           >
             Finish
