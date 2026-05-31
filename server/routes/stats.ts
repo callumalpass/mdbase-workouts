@@ -74,6 +74,7 @@ stats.get("/", async (c) => {
   }
 
   const streakResult = computeStreak(activeDates, todayEpochDay);
+  const runStatus = computeRunStatus(activeDates, todayStr, todayEpochDay, streakResult);
 
   // This week session count (sessions only, Mon-today)
   const monday = getMondayDateKey(todayStr);
@@ -109,9 +110,11 @@ stats.get("/", async (c) => {
   return c.json({
     streak: {
       currentStreak: streakResult.currentStreak,
+      longestRun: streakResult.longestRun,
       thisWeekSessions,
       bankedCheatDays: streakResult.bankedCheatDays,
       cheatDayDates: streakResult.cheatDayDates,
+      runStatus,
     },
     prs,
     volume: {
@@ -152,13 +155,22 @@ function dateKeyWeekday(dateKey: string): number {
 
 interface StreakResult {
   currentStreak: number;
+  longestRun: number;
   bankedCheatDays: number;
   cheatDayDates: string[];
 }
 
+interface RunStatus {
+  kind: "active" | "quiet-day" | "hinge-day" | "reset";
+  todayActive: boolean;
+  quietDays: number;
+  lastActiveDate: string | null;
+  recoverableStreak: number | null;
+}
+
 function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakResult {
   if (activeDates.size === 0) {
-    return { currentStreak: 0, bankedCheatDays: 0, cheatDayDates: [] };
+    return { currentStreak: 0, longestRun: 0, bankedCheatDays: 0, cheatDayDates: [] };
   }
 
   // Convert to sorted epoch days
@@ -170,6 +182,7 @@ function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakR
   const activeSet = new Set(epochDays);
 
   let streak = 0;
+  let longestRun = 0;
   let activeInStreak = 0;
   let consecutiveRest = 0;
   let bank = 0;
@@ -178,6 +191,7 @@ function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakR
   for (let day = earliest; day <= todayEpochDay; day++) {
     if (activeSet.has(day)) {
       streak++;
+      longestRun = Math.max(longestRun, streak);
       activeInStreak++;
       consecutiveRest = 0;
       if (activeInStreak % 7 === 0) {
@@ -202,7 +216,49 @@ function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakR
     }
   }
 
-  return { currentStreak: streak, bankedCheatDays: bank, cheatDayDates };
+  return { currentStreak: streak, longestRun, bankedCheatDays: bank, cheatDayDates };
+}
+
+function computeRunStatus(
+  activeDates: Set<string>,
+  todayStr: string,
+  todayEpochDay: number,
+  streakResult: StreakResult
+): RunStatus {
+  const todayActive = activeDates.has(todayStr);
+  const pastActiveEpochDays = Array.from(activeDates)
+    .map(dateKeyToEpochDay)
+    .filter((day) => day <= todayEpochDay)
+    .sort((a, b) => b - a);
+  const lastActiveEpochDay = pastActiveEpochDays[0] ?? null;
+  const lastActiveDate = lastActiveEpochDay == null ? null : epochDayToDateKey(lastActiveEpochDay);
+  const quietDays = todayActive || lastActiveEpochDay == null ? 0 : todayEpochDay - lastActiveEpochDay;
+
+  if (todayActive) {
+    return { kind: "active", todayActive, quietDays, lastActiveDate, recoverableStreak: null };
+  }
+
+  const yesterdayResult = computeStreak(activeDates, todayEpochDay - 1);
+  const activeWithToday = new Set(activeDates);
+  activeWithToday.add(todayStr);
+  const withTodayResult = computeStreak(activeWithToday, todayEpochDay);
+  const canRecoverToday = yesterdayResult.currentStreak > 0 && withTodayResult.currentStreak > 0;
+
+  if (streakResult.currentStreak === 0 && canRecoverToday) {
+    return {
+      kind: "hinge-day",
+      todayActive,
+      quietDays,
+      lastActiveDate,
+      recoverableStreak: withTodayResult.currentStreak,
+    };
+  }
+
+  if (streakResult.currentStreak > 0) {
+    return { kind: "quiet-day", todayActive, quietDays, lastActiveDate, recoverableStreak: null };
+  }
+
+  return { kind: "reset", todayActive, quietDays, lastActiveDate, recoverableStreak: null };
 }
 
 function computePRs(

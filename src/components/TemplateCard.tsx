@@ -4,11 +4,12 @@ import { parseWikilink, slugToName } from "../lib/utils";
 interface Props {
   template: PlanTemplate;
   onStart: (template: PlanTemplate) => void;
+  onPlan?: (template: PlanTemplate) => void;
   onEdit?: (template: PlanTemplate) => void;
   onDelete?: (template: PlanTemplate) => void;
 }
 
-export default function TemplateCard({ template, onStart, onEdit, onDelete }: Props) {
+export default function TemplateCard({ template, onStart, onPlan, onEdit, onDelete }: Props) {
   return (
     <div className="ledger-card ledger-card-ocean active:translate-y-px transition-transform">
       <div className="flex items-center justify-between mb-3">
@@ -57,13 +58,24 @@ export default function TemplateCard({ template, onStart, onEdit, onDelete }: Pr
         })}
       </div>
 
-      <button
-        onClick={() => onStart(template)}
-        className="w-full py-3 bg-ocean text-paper text-xs font-mono font-medium
-          uppercase tracking-[0.15em] active:scale-[0.97] transition-transform duration-75"
-      >
-        Start
-      </button>
+      <div className={onPlan ? "grid grid-cols-2 gap-2" : ""}>
+        {onPlan && (
+          <button
+            onClick={() => onPlan(template)}
+            className="py-3 border border-ocean text-ocean text-xs font-mono font-medium
+              uppercase tracking-[0.15em] active:scale-[0.97] transition-transform duration-75"
+          >
+            Plan
+          </button>
+        )}
+        <button
+          onClick={() => onStart(template)}
+          className="w-full py-3 bg-ocean text-paper text-xs font-mono font-medium
+            uppercase tracking-[0.15em] active:scale-[0.97] transition-transform duration-75"
+        >
+          Start
+        </button>
+      </div>
     </div>
   );
 }

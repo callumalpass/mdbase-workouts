@@ -34,7 +34,7 @@ export interface Session {
 export interface PlanExercise {
   exercise: string;
   target_sets?: number;
-  target_reps?: number;
+  target_reps?: string | number;
   target_weight?: number;
   notes?: string;
 }
@@ -127,9 +127,17 @@ export interface PR {
 export interface StatsResponse {
   streak: {
     currentStreak: number;
+    longestRun: number;
     thisWeekSessions: number;
     bankedCheatDays: number;
     cheatDayDates: string[];
+    runStatus: {
+      kind: "active" | "quiet-day" | "hinge-day" | "reset";
+      todayActive: boolean;
+      quietDays: number;
+      lastActiveDate: string | null;
+      recoverableStreak: number | null;
+    };
   };
   prs: PR[];
   volume: {
@@ -199,7 +207,7 @@ export interface CreatePlanInput {
   exercises: Array<{
     exercise: string;
     target_sets?: number;
-    target_reps?: number;
+    target_reps?: string | number;
     target_weight?: number;
     notes?: string;
   }>;

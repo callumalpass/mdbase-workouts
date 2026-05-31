@@ -87,7 +87,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
         exercises: exercises.map((e) => ({
           exercise: pathToSlug(e.exercise.path),
           ...(e.target_sets && { target_sets: Number(e.target_sets) }),
-          ...(e.target_reps && { target_reps: Number(e.target_reps) }),
+          ...(e.target_reps.trim() && { target_reps: e.target_reps.trim() }),
           ...(e.target_weight && { target_weight: Number(e.target_weight) }),
         })),
       });
@@ -313,13 +313,12 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
                           <div>
                             <label className="text-[11px] font-mono text-faded uppercase tracking-wider mb-0.5 block">Reps</label>
                             <input
-                              type="number"
-                              inputMode="numeric"
+                              type="text"
                               value={entry.target_reps}
                               onChange={(e) =>
                                 handleUpdateExercise(index, "target_reps", e.target.value)
                               }
-                              placeholder="10"
+                              placeholder="10-12"
                               className={smallInputClass}
                             />
                           </div>

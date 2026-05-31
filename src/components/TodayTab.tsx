@@ -4,7 +4,7 @@ import { useExercises } from "../hooks/useExercises";
 import { parseWikilink, slugToName, formatTime, formatSet, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
 import { api } from "../lib/api";
-import { getUserTimeZone } from "../lib/datetime";
+import { getUserTimeZone, todayLocalDateKey } from "../lib/datetime";
 import type { Plan, PlanTemplate, StatsResponse, WeeklyStatsResponse } from "../lib/types";
 import PlanCard from "./PlanCard";
 import WeeklySetsChart from "./WeeklySetsChart";
@@ -15,6 +15,14 @@ import SessionLoggerSheet from "./SessionLoggerSheet";
 import TemplateEditorSheet from "./TemplateEditorSheet";
 import ConfirmDialog from "./ConfirmDialog";
 
+function formatDateKey(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 export default function TodayTab() {
   const { data, loading, error, refresh } = useToday();
   const { allExercises } = useExercises();
@@ -24,6 +32,7 @@ export default function TodayTab() {
   const [activeTemplate, setActiveTemplate] = useState<PlanTemplate | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [showStreakRules, setShowStreakRules] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStatsResponse | null>(null);
   const [targetSets, setTargetSets] = useState<number>(
     () => Number(localStorage.getItem("workout-weekly-target") || 80)
@@ -34,6 +43,10 @@ export default function TodayTab() {
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PlanTemplate | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState<PlanTemplate | null>(null);
+  const [planningTemplate, setPlanningTemplate] = useState<PlanTemplate | null>(null);
+  const [planningDate, setPlanningDate] = useState(() => todayLocalDateKey());
+  const [planning, setPlanning] = useState(false);
+  const [planningError, setPlanningError] = useState("");
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
@@ -85,6 +98,55 @@ export default function TodayTab() {
   }
 
   const hasContent = data.plans.length > 0 || data.sessions.length > 0 || data.quickLogs.length > 0 || (data.templates && data.templates.length > 0);
+  const runStatus = stats?.streak.runStatus;
+  const hingeRunStatus =
+    runStatus?.kind === "hinge-day" && runStatus.recoverableStreak != null ? runStatus : null;
+  const isHingeDay = hingeRunStatus != null;
+
+  const openTemplatePlanner = (template: PlanTemplate) => {
+    setPlanningTemplate(template);
+    setPlanningDate(todayLocalDateKey());
+    setPlanningError("");
+  };
+
+  const closeTemplatePlanner = () => {
+    if (planning) return;
+    setPlanningTemplate(null);
+    setPlanningDate(todayLocalDateKey());
+    setPlanningError("");
+  };
+
+  const createPlanFromTemplate = async () => {
+    if (!planningTemplate) return;
+    setPlanning(true);
+    setPlanningError("");
+    try {
+      await api.plans.create({
+        date: planningDate,
+        title: planningTemplate.title,
+        exercises: planningTemplate.exercises.map((ex) => {
+          const targetReps =
+            typeof ex.target_reps === "string" ? ex.target_reps.trim() : ex.target_reps;
+          return {
+            exercise: parseWikilink(ex.exercise),
+            ...(ex.target_sets != null && { target_sets: ex.target_sets }),
+            ...(targetReps != null && targetReps !== "" && { target_reps: targetReps }),
+            ...(ex.target_weight != null && { target_weight: ex.target_weight }),
+            ...(ex.notes && { notes: ex.notes }),
+          };
+        }),
+      });
+      haptics.tap();
+      setPlanningTemplate(null);
+      setPlanningDate(todayLocalDateKey());
+      refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not create this plan.";
+      setPlanningError(message);
+    } finally {
+      setPlanning(false);
+    }
+  };
 
   return (
     <div className="p-5 pb-20 space-y-8">
@@ -106,19 +168,43 @@ export default function TodayTab() {
       {/* Streak widget */}
       {stats && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="ledger-card ledger-card-sage">
-            <div className="text-2xl font-mono font-bold text-sage">
-              {stats.streak.currentStreak}
-            </div>
-            <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
-              Current Run
-            </div>
-            {stats.streak.bankedCheatDays > 0 && (
-              <div className="text-[11px] font-mono text-amber mt-1">
-                {stats.streak.bankedCheatDays} cheat {stats.streak.bankedCheatDays === 1 ? "day" : "days"}
+          <button
+            type="button"
+            onClick={() => {
+              haptics.tap();
+              setShowStreakRules((open) => !open);
+            }}
+            aria-expanded={showStreakRules}
+            aria-controls="streak-rules"
+            className="ledger-card ledger-card-sage text-left active:bg-sage/10 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-baseline gap-2 font-mono font-bold text-sage">
+                  <span className="text-2xl">{stats.streak.currentStreak}</span>
+                  {isHingeDay && (
+                    <span className="text-base text-amber">
+                      -&gt; {hingeRunStatus.recoverableStreak}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mt-1">
+                  Current Run
+                </div>
+                {isHingeDay && (
+                  <div className="mt-1 text-[11px] font-mono uppercase tracking-[0.15em] text-amber">
+                    Hinge day
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border border-sage/60 text-[10px] font-mono text-sage"
+              >
+                ?
+              </span>
+            </div>
+          </button>
           <div className="ledger-card ledger-card-blush">
             <div className="text-2xl font-mono font-bold text-blush">
               {stats.streak.thisWeekSessions}
@@ -127,6 +213,80 @@ export default function TodayTab() {
               This Week
             </div>
           </div>
+          {isHingeDay && (
+            <div className="col-span-2 ledger-card-tight ledger-card-amber animate-fade-slide-in">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border border-amber/60 font-mono text-sm font-bold text-amber">
+                  !
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xs font-mono uppercase tracking-[0.15em] text-amber">
+                    Hinge day
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-ink">
+                    The run is still recoverable today. Record any workout or quick log to resume it at{" "}
+                    <span className="font-mono font-bold text-amber">
+                      {hingeRunStatus.recoverableStreak}
+                    </span>.
+                  </p>
+                  <p className="mt-2 text-[11px] font-mono uppercase tracking-[0.15em] text-faded">
+                    {hingeRunStatus.lastActiveDate
+                      ? `Last active ${formatDateKey(hingeRunStatus.lastActiveDate)}`
+                      : "No recent active day"}{" "}
+                    / {hingeRunStatus.quietDays} quiet {hingeRunStatus.quietDays === 1 ? "day" : "days"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {showStreakRules && (
+            <div
+              id="streak-rules"
+              className="col-span-2 ledger-card-tight ledger-card-sage animate-fade-slide-in"
+            >
+              <h2 className="text-xs font-mono uppercase tracking-[0.15em] text-sage">
+                Run rules
+              </h2>
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink">
+                <li>A workout session or a quick log makes that date active.</li>
+                <li>The run number counts active dates, not calendar days.</li>
+                <li>Longest run is the highest run count you have reached under these same rules.</li>
+                <li>One quiet day is allowed. A second quiet day spends one banked cheat day, if you have one; without one, the run resets.</li>
+                <li>Every 7 active dates earns 1 cheat day, up to 5 banked.</li>
+              </ul>
+              <p className="mt-3 text-xs leading-relaxed text-faded">
+                Dates are grouped in your current timezone. Rest and cheat days keep the run alive, but do not add to the count.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-sage/20 pt-3">
+                <div>
+                  <div className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded">
+                    Longest run
+                  </div>
+                  <div className="mt-1 text-lg font-mono font-bold text-sage">
+                    {stats.streak.longestRun}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded">
+                    Cheat days
+                  </div>
+                  <div className="mt-1 text-lg font-mono font-bold text-amber">
+                    {stats.streak.bankedCheatDays}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-[11px] font-mono uppercase tracking-[0.15em] text-faded">
+                    Spent in run
+                  </div>
+                  <div className="mt-1 text-xs leading-relaxed text-ink">
+                    {stats.streak.cheatDayDates.length > 0
+                      ? stats.streak.cheatDayDates.map(formatDateKey).join(", ")
+                      : "None"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -236,6 +396,7 @@ export default function TodayTab() {
                   <TemplateCard
                     template={template}
                     onStart={(t) => { haptics.tap(); setActiveTemplate(t); }}
+                    onPlan={(t) => { haptics.tap(); openTemplatePlanner(t); }}
                     onEdit={(t) => { setEditingTemplate(t); setShowTemplateEditor(true); }}
                     onDelete={(t) => setDeletingTemplate(t)}
                   />
@@ -380,6 +541,51 @@ export default function TodayTab() {
       >
         +
       </button>
+
+      {planningTemplate && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-ink/30" onClick={closeTemplatePlanner} />
+          <div className="relative w-full max-w-lg bg-paper border-t-2 border-ocean p-5 pb-8 animate-[slideUp_0.2s_ease-out]">
+            <div className="w-10 h-[2px] bg-rule mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-1">Plan Template</h2>
+            <p className="text-sm text-faded mb-5">{planningTemplate.title}</p>
+
+            <label className="text-[11px] font-mono text-faded uppercase tracking-[0.15em] mb-1 block">
+              Date
+            </label>
+            <input
+              type="date"
+              value={planningDate}
+              onChange={(e) => setPlanningDate(e.target.value)}
+              className="w-full px-4 py-3 bg-paper border border-rule text-sm
+                focus:outline-none focus:border-ocean transition-colors"
+            />
+
+            {planningError && (
+              <p className="mt-3 text-sm text-blush">{planningError}</p>
+            )}
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={closeTemplatePlanner}
+                disabled={planning}
+                className="flex-1 py-3 border border-rule text-sm font-medium
+                  text-faded active:bg-card active:scale-[0.98] transition-all duration-75 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createPlanFromTemplate}
+                disabled={planning || !planningDate}
+                className="flex-1 py-3 bg-ocean text-paper text-sm font-medium
+                  active:scale-[0.97] transition-transform duration-75 disabled:opacity-40"
+              >
+                {planning ? "Creating..." : "Create Plan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <QuickLogSheet
         open={showQuickLog}

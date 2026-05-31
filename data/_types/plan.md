@@ -29,8 +29,8 @@ fields:
           type: number
           description: Number of sets to aim for.
         target_reps:
-          type: number
-          description: Number of reps per set to aim for.
+          type: string
+          description: Target reps per set. Can be a number-like string ("8"), range ("10-12"), or descriptor ("AMRAP").
         target_weight:
           type: number
           description: Target weight in kg.

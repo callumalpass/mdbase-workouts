@@ -19,6 +19,21 @@ test.describe("workout tracker e2e", () => {
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
   });
 
+  test("current run counter explains streak rules", async ({ page }) => {
+    await setupMockApi(page);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: /current run/i }).click();
+
+    await expect(page.getByRole("heading", { name: "Run rules" })).toBeVisible();
+    await expect(page.getByText("The run number counts active dates, not calendar days.")).toBeVisible();
+    await expect(page.getByText("Longest run is the highest run count you have reached under these same rules.")).toBeVisible();
+    await expect(page.getByText(/Every 7 active dates earns 1 cheat day/)).toBeVisible();
+    await expect(page.getByText("Longest run", { exact: true })).toBeVisible();
+    await expect(page.getByText("Cheat days", { exact: true })).toBeVisible();
+    await expect(page.getByText("Spent in run")).toBeVisible();
+  });
+
   test("quick log flow posts payload and refreshes today", async ({ page }) => {
     const mock = await setupMockApi(page);
     await page.goto("/");
@@ -70,12 +85,40 @@ test.describe("workout tracker e2e", () => {
         expect.objectContaining({
           exercise: "bench-press",
           target_sets: 3,
-          target_reps: 10,
+          target_reps: "10",
         }),
       ],
     });
 
     await expect(page.getByText("Upper Test Day")).toBeVisible();
+  });
+
+  test("template can be added as a dated plan", async ({ page }) => {
+    const mock = await setupMockApi(page);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: /templates/i }).click();
+    await page.getByRole("button", { name: "Plan", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Plan Template" })).toBeVisible();
+    await page.getByRole("button", { name: "Create Plan" }).click();
+
+    await expect.poll(() => mock.requests.plans.length).toBe(1);
+    expect(mock.requests.plans[0]).toMatchObject({
+      title: "Bench Template",
+      exercises: [
+        expect.objectContaining({
+          exercise: "bench-press",
+          target_sets: 4,
+          target_reps: "AMRAP",
+          target_weight: 60,
+        }),
+        expect.objectContaining({
+          exercise: "plank",
+          target_sets: 2,
+          target_reps: "30s",
+        }),
+      ],
+    });
   });
 
   test("session logger saves completed sets and metadata", async ({ page }) => {

@@ -25,7 +25,19 @@ interface PlanRecord {
   exercises: Array<{
     exercise: string;
     target_sets?: number;
-    target_reps?: number;
+    target_reps?: string | number;
+    target_weight?: number;
+    notes?: string;
+  }>;
+}
+
+interface PlanTemplateRecord {
+  path: string;
+  title: string;
+  exercises: Array<{
+    exercise: string;
+    target_sets?: number;
+    target_reps?: string;
     target_weight?: number;
     notes?: string;
   }>;
@@ -126,6 +138,17 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
       exercises: [
         { exercise: "[[exercises/squat]]", target_sets: 3, target_reps: 5, target_weight: 80 },
         { exercise: "[[exercises/bench-press]]", target_sets: 3, target_reps: 8, target_weight: 60 },
+      ],
+    },
+  ];
+
+  const templates: PlanTemplateRecord[] = [
+    {
+      path: "plan-templates/bench-template.md",
+      title: "Bench Template",
+      exercises: [
+        { exercise: "[[exercises/bench-press]]", target_sets: 4, target_reps: "AMRAP", target_weight: 60 },
+        { exercise: "[[exercises/plank]]", target_sets: 2, target_reps: "30s" },
       ],
     },
   ];
@@ -263,6 +286,41 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
         plans: todaysPlans,
         sessions: todaysSessions,
         quickLogs: todaysQuickLogs,
+        templates,
+      });
+    }
+
+    if (path === "/api/stats" && method === "GET") {
+      return json(route, {
+        streak: {
+          currentStreak: 21,
+          longestRun: 33,
+          thisWeekSessions: 3,
+          bankedCheatDays: 2,
+          cheatDayDates: [localDay(new Date(Date.now() - 2 * 86_400_000))],
+          runStatus: {
+            kind: "active",
+            todayActive: true,
+            quietDays: 0,
+            lastActiveDate: today,
+            recoverableStreak: null,
+          },
+        },
+        prs: [],
+        volume: {
+          thisWeek: { sets: 18, volume: 3200 },
+          lastWeek: { sets: 14, volume: 2600 },
+          muscleGroups: {},
+        },
+      });
+    }
+
+    if (path === "/api/stats/weekly" && method === "GET") {
+      return json(route, {
+        weeks: [
+          { weekStart: localDay(new Date(Date.now() - 7 * 86_400_000)), sets: 14, isCurrentWeek: false },
+          { weekStart: today, sets: 18, isCurrentWeek: true },
+        ],
       });
     }
 

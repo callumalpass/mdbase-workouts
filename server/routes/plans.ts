@@ -15,6 +15,15 @@ import {
 const plans = new Hono();
 const ALLOWED_STATUSES = new Set(["scheduled", "completed", "skipped"]);
 
+function asOptionalRepTarget(value: unknown, field: string): string | number | undefined {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "number") {
+    const targetReps = asOptionalInteger(value, field);
+    return targetReps;
+  }
+  return asOptionalString(value);
+}
+
 // List plans
 plans.get("/", async (c) => {
   const db = c.get("db");
@@ -73,7 +82,7 @@ plans.post("/", async (c) => {
         `exercises[${index}].exercise`
       );
       const targetSets = asOptionalInteger(ex.target_sets, `exercises[${index}].target_sets`);
-      const targetReps = asOptionalInteger(ex.target_reps, `exercises[${index}].target_reps`);
+      const targetReps = asOptionalRepTarget(ex.target_reps, `exercises[${index}].target_reps`);
       const targetWeight = asOptionalNumber(ex.target_weight, `exercises[${index}].target_weight`);
       const notes = asOptionalString(ex.notes);
       return {
