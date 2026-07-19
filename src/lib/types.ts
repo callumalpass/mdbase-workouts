@@ -131,6 +131,8 @@ export interface StatsResponse {
     thisWeekSessions: number;
     bankedCheatDays: number;
     cheatDayDates: string[];
+    currentRunDates: string[];
+    runDates: string[];
     runStatus: {
       kind: "active" | "quiet-day" | "hinge-day" | "reset";
       todayActive: boolean;

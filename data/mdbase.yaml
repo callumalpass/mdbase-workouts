@@ -1,10 +1,14 @@
-spec_version: "0.2.0"
-name: "MDBase Workouts"
-description: "Workout tracking collection"
-
+spec_version: 0.3.0
+name: MDBase Workouts
+description: Workout tracking collection
 settings:
-  types_folder: "_types"
-  extensions: [md]
+  types_folder: _types
   include_subfolders: true
-  default_validation: warn
   write_defaults: false
+  record_extensions:
+    - md
+  validation: warn
+x-legacy-v0.2:
+  settings:
+    extensions:
+      - md

@@ -20,8 +20,9 @@ exercises.get("/", async (c) => {
     include_body: false,
   });
   if (result.error) return c.json({ error: result.error.message }, 500);
+  const rows = result.results ?? [];
   return c.json(
-    result.results.map((r) => ({
+    rows.map((r) => ({
       path: r.path,
       ...r.frontmatter,
     }))
@@ -47,12 +48,13 @@ exercises.post("/last-sets", async (c) => {
       include_body: false,
     });
     if (sessionsResult.error) return c.json({ error: sessionsResult.error.message }, 500);
+    const sessions = sessionsResult.results ?? [];
 
     const wikilinks = new Map(slugs.map((s) => [`[[exercises/${s}]]`, s]));
     const remaining = new Set(slugs);
     const result: Record<string, { date: string; sets: unknown[] }> = {};
 
-    for (const r of sessionsResult.results) {
+    for (const r of sessions) {
       if (remaining.size === 0) break;
       const session = r.frontmatter as any;
       for (const ex of session.exercises || []) {

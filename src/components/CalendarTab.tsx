@@ -47,6 +47,7 @@ export default function CalendarTab() {
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const { allExercises } = useExercises();
+  const [runDateSet, setRunDateSet] = useState<Set<string>>(new Set());
   const [cheatDaySet, setCheatDaySet] = useState<Set<string>>(new Set());
   const [month, setMonth] = useState(() => {
     const now = new Date();
@@ -87,9 +88,13 @@ export default function CalendarTab() {
 
   useEffect(() => {
     api.stats.get(getUserTimeZone()).then((stats) => {
+      setRunDateSet(new Set(stats.streak.runDates ?? stats.streak.currentRunDates ?? []));
       setCheatDaySet(new Set(stats.streak.cheatDayDates));
-    }).catch(() => {});
-  }, [sessions]);
+    }).catch(() => {
+      setRunDateSet(new Set());
+      setCheatDaySet(new Set());
+    });
+  }, [sessions, quickLogs]);
 
   // Restore in-progress session from localStorage
   const sessionRestoredRef = useRef(false);
@@ -136,65 +141,6 @@ export default function CalendarTab() {
     }
     return grouped;
   }, [quickLogs]);
-
-  const { streakDays, cheatDays } = useMemo(() => {
-    // Build set of all active dateKeys (sessions + quick-logs)
-    const activeDates = new Set<string>();
-    for (const key of Object.keys(sessionsByDay)) activeDates.add(key);
-    for (const key of Object.keys(quickLogsByDay)) activeDates.add(key);
-
-    if (activeDates.size === 0) return { streakDays: new Set<string>(), cheatDays: new Set<string>() };
-
-    // Merge cheat days into continuity dates so bridged gaps form continuous streak spans
-    const continuityDates = new Set(activeDates);
-    for (const d of cheatDaySet) continuityDates.add(d);
-
-    // Sort continuity dates
-    const sorted = Array.from(continuityDates).sort();
-
-    // Walk through sorted dates, grouping into streak segments
-    // A new segment starts when the gap between consecutive continuity dates is >2 days
-    const segments: [string, string][] = [];
-    let segStart = sorted[0];
-    let segEnd = sorted[0];
-
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = new Date(`${segEnd}T00:00:00`);
-      const curr = new Date(`${sorted[i]}T00:00:00`);
-      const gapDays = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
-
-      if (gapDays <= 2) {
-        segEnd = sorted[i];
-      } else {
-        segments.push([segStart, segEnd]);
-        segStart = sorted[i];
-        segEnd = sorted[i];
-      }
-    }
-    segments.push([segStart, segEnd]);
-
-    // For segments with 2+ continuity days, mark the entire span as "in streak"
-    const result = new Set<string>();
-    for (const [start, end] of segments) {
-      const startDate = new Date(`${start}T00:00:00`);
-      const endDate = new Date(`${end}T00:00:00`);
-      let count = 0;
-      const cursor = new Date(startDate);
-      while (cursor <= endDate) {
-        if (continuityDates.has(toDateKey(cursor))) count++;
-        cursor.setDate(cursor.getDate() + 1);
-      }
-
-      if (count >= 2) {
-        const d = new Date(startDate);
-        while (d <= endDate) {
-          result.add(toDateKey(d));
-          d.setDate(d.getDate() + 1);
-        }
-      }
-    }
-    return { streakDays: result, cheatDays: cheatDaySet };
-  }, [sessionsByDay, quickLogsByDay, cheatDaySet]);
 
   const monthGrid = useMemo(() => {
     const year = month.getFullYear();
@@ -272,8 +218,8 @@ export default function CalendarTab() {
             const quickLogCount = quickLogsByDay[key]?.length ?? 0;
             const isSelected = key === selectedDay;
             const isToday = key === toDateKey(new Date());
-            const isCheatDay = cheatDays.has(key);
-            const inStreak = streakDays.has(key);
+            const isCheatDay = cheatDaySet.has(key);
+            const inStreak = runDateSet.has(key);
 
             return (
               <button

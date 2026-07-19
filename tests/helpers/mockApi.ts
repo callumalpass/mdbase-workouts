@@ -76,6 +76,12 @@ function localDay(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+function localDayOffset(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - offsetDays);
+  return localDay(date);
+}
+
 function mkDate(offsetDays: number, hour = 10): string {
   const d = new Date();
   d.setDate(d.getDate() - offsetDays);
@@ -298,6 +304,8 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
           thisWeekSessions: 3,
           bankedCheatDays: 2,
           cheatDayDates: [localDay(new Date(Date.now() - 2 * 86_400_000))],
+          currentRunDates: Array.from({ length: 21 }, (_, index) => localDayOffset(20 - index)),
+          runDates: Array.from({ length: 25 }, (_, index) => localDayOffset(24 - index)),
           runStatus: {
             kind: "active",
             todayActive: true,

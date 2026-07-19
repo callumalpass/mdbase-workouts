@@ -42,8 +42,9 @@ plans.get("/", async (c) => {
     include_body: false,
   });
   if (result.error) return c.json({ error: result.error.message }, 500);
+  const rows = result.results ?? [];
   return c.json(
-    result.results.map((r) => ({
+    rows.map((r) => ({
       path: r.path,
       ...r.frontmatter,
     }))

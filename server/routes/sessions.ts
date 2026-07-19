@@ -25,12 +25,13 @@ sessions.get("/", async (c) => {
     include_body: false,
   });
   if (result.error) return c.json({ error: result.error.message }, 500);
+  const rows = result.results ?? [];
   return c.json({
-    sessions: result.results.map((r) => ({
+    sessions: rows.map((r) => ({
       path: r.path,
       ...r.frontmatter,
     })),
-    total: result.meta?.total_count ?? result.results.length,
+    total: result.meta?.total_count ?? rows.length,
     hasMore: result.meta?.has_more ?? false,
   });
 });

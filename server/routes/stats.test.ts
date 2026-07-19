@@ -85,6 +85,14 @@ describe("GET /stats run status", () => {
 
     expect(res.status).toBe(200);
     expect(body.streak.currentStreak).toBe(0);
+    expect(body.streak.currentRunDates).toEqual([]);
+    expect(body.streak.runDates).toEqual([
+      "2026-05-26",
+      "2026-05-27",
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30",
+    ]);
     expect(body.streak.runStatus).toEqual({
       kind: "hinge-day",
       todayActive: false,
@@ -101,6 +109,22 @@ describe("GET /stats run status", () => {
 
     expect(res.status).toBe(200);
     expect(body.streak.currentStreak).toBe(5);
+    expect(body.streak.currentRunDates).toEqual([
+      "2026-05-26",
+      "2026-05-27",
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30",
+      "2026-05-31",
+    ]);
+    expect(body.streak.runDates).toEqual([
+      "2026-05-26",
+      "2026-05-27",
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30",
+      "2026-05-31",
+    ]);
     expect(body.streak.runStatus).toEqual({
       kind: "active",
       todayActive: true,

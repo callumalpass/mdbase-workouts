@@ -1,46 +1,59 @@
 ---
+kind: mdbase.type
 name: exercise
+version: 1
 description: An exercise definition with tracking configuration
-
 match:
-  path_glob: "exercises/**"
-
-fields:
-  name:
-    type: string
-    required: true
-    min_length: 1
-    description: Display name of the exercise (e.g. "Bench Press", "Pull-Up").
-
-  muscle_groups:
-    type: list
-    description: Primary muscle groups targeted (e.g. "chest", "quads", "lats").
-    items:
-      type: string
-
-  equipment:
-    type: enum
-    values:
-      - barbell
-      - dumbbell
-      - bodyweight
-      - cable
-      - machine
-      - kettlebell
-      - band
-      - none
-    description: The type of equipment required for this exercise.
-
-  tracking:
-    type: enum
-    values:
-      - weight_reps
-      - reps_only
-      - timed
-      - distance
-    default: weight_reps
-    description: How this exercise is tracked. Determines which fields are relevant in session sets — "weight_reps" uses weight+reps, "reps_only" uses reps, "timed" uses duration_seconds, "distance" uses distance.
+  path_glob: exercises/**
+schema:
+  dialect: json-schema-2020-12
+  value:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: true
+    properties:
+      type:
+        const: exercise
+      name:
+        type: string
+        description: Display name of the exercise (e.g. "Bench Press", "Pull-Up").
+      muscle_groups:
+        type: array
+        items:
+          type: string
+        description: Primary muscle groups targeted (e.g. "chest", "quads", "lats").
+      equipment:
+        enum:
+          - barbell
+          - dumbbell
+          - bodyweight
+          - cable
+          - machine
+          - kettlebell
+          - band
+          - none
+        description: The type of equipment required for this exercise.
+      tracking:
+        enum:
+          - weight_reps
+          - reps_only
+          - timed
+          - distance
+        description: >-
+          How this exercise is tracked. Determines which fields are relevant in session sets —
+          "weight_reps" uses weight+reps, "reps_only" uses reps, "timed" uses duration_seconds,
+          "distance" uses distance.
+        default: weight_reps
+    required:
+      - name
+collection:
+  read_defaults:
+    tracking: weight_reps
+x-legacy-v0.2:
+  fields:
+    fields.name.min_length: 1
 ---
+
 
 ## Exercise
 

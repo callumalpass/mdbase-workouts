@@ -27,6 +27,7 @@ stats.get("/", async (c) => {
     }),
     db.query({
       types: ["quick-log"],
+      limit: sessionLimit,
       include_body: false,
     }),
   ]);
@@ -114,6 +115,8 @@ stats.get("/", async (c) => {
       thisWeekSessions,
       bankedCheatDays: streakResult.bankedCheatDays,
       cheatDayDates: streakResult.cheatDayDates,
+      currentRunDates: streakResult.currentRunDates,
+      runDates: streakResult.runDates,
       runStatus,
     },
     prs,
@@ -158,6 +161,8 @@ interface StreakResult {
   longestRun: number;
   bankedCheatDays: number;
   cheatDayDates: string[];
+  currentRunDates: string[];
+  runDates: string[];
 }
 
 interface RunStatus {
@@ -170,7 +175,14 @@ interface RunStatus {
 
 function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakResult {
   if (activeDates.size === 0) {
-    return { currentStreak: 0, longestRun: 0, bankedCheatDays: 0, cheatDayDates: [] };
+    return {
+      currentStreak: 0,
+      longestRun: 0,
+      bankedCheatDays: 0,
+      cheatDayDates: [],
+      currentRunDates: [],
+      runDates: [],
+    };
   }
 
   // Convert to sorted epoch days
@@ -187,36 +199,50 @@ function computeStreak(activeDates: Set<string>, todayEpochDay: number): StreakR
   let consecutiveRest = 0;
   let bank = 0;
   let cheatDayDates: string[] = [];
+  let currentRunDates: string[] = [];
+  const runDates: string[] = [];
 
   for (let day = earliest; day <= todayEpochDay; day++) {
+    const dateKey = epochDayToDateKey(day);
     if (activeSet.has(day)) {
       streak++;
       longestRun = Math.max(longestRun, streak);
       activeInStreak++;
       consecutiveRest = 0;
+      currentRunDates.push(dateKey);
       if (activeInStreak % 7 === 0) {
         bank = Math.min(bank + 1, 5);
       }
     } else {
+      if (streak > 0) currentRunDates.push(dateKey);
       consecutiveRest++;
       if (consecutiveRest >= 2) {
         if (bank > 0) {
           bank--;
-          cheatDayDates.push(epochDayToDateKey(day));
+          cheatDayDates.push(dateKey);
           consecutiveRest = 0; // streak survives, not incremented
         } else {
+          runDates.push(...currentRunDates.slice(0, -1));
           // Streak breaks
           streak = 0;
           activeInStreak = 0;
           bank = 0;
           cheatDayDates = [];
+          currentRunDates = [];
           consecutiveRest = 0;
         }
       }
     }
   }
 
-  return { currentStreak: streak, longestRun, bankedCheatDays: bank, cheatDayDates };
+  return {
+    currentStreak: streak,
+    longestRun,
+    bankedCheatDays: bank,
+    cheatDayDates,
+    currentRunDates,
+    runDates: [...runDates, ...currentRunDates],
+  };
 }
 
 function computeRunStatus(
