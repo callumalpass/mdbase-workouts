@@ -3,5 +3,7 @@ dist/
 .mdbase/
 *.log
 .DS_Store
+test-results/
+playwright-report/
 data/*
 !data/_types/

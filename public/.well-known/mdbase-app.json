@@ -1,0 +1,8 @@
+{
+  "manifest_version": 1,
+  "name": "MDBase Workouts",
+  "homepage": "http://localhost:5187",
+  "redirect_uris": [
+    "http://localhost:5187/connect/callback"
+  ]
+}

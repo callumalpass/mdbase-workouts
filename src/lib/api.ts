@@ -17,6 +17,8 @@ import type {
   TodayData,
   WeeklyStatsResponse,
 } from "./types";
+import { connectionInfo } from "./connect";
+import { connectApi } from "./connect-api";
 
 const BASE = "/api";
 
@@ -32,7 +34,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const api = {
+const localApi = {
   exercises: {
     list: () => request<Exercise[]>("/exercises"),
     get: (slug: string) => request<Exercise>(`/exercises/${slug}`),
@@ -102,3 +104,10 @@ export const api = {
       }),
   },
 };
+
+export const api = new Proxy(localApi, {
+  get(target, property, receiver) {
+    const backend = connectionInfo() ? connectApi : target;
+    return Reflect.get(backend, property, receiver);
+  },
+}) as typeof localApi;

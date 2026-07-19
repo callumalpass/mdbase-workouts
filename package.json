@@ -13,12 +13,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:connect": "playwright test --config playwright.dogfood.config.ts",
     "screenshots": "playwright test tests/mobile-screenshots.spec.ts --project=mobile",
     "seed": "tsx scripts/seed-exercises.ts",
     "start": "NODE_ENV=production tsx server/index.ts"
   },
   "dependencies": {
     "@callumalpass/mdbase": "file:../mdbase",
+    "@mdbase/connect": "file:../mdbase-connect/packages/client",
     "@hono/node-server": "^1.19.14",
     "hono": "^4.12.30",
     "react": "^18.3.1",
