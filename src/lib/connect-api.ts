@@ -17,6 +17,7 @@ import type {
   WeeklyStatsResponse,
 } from "./types";
 import { connect, connectionInfo } from "./connect";
+import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 
 interface QueryRow {
   path: string;
@@ -188,71 +189,29 @@ async function exerciseHistory(slug: string): Promise<ExerciseHistory> {
 }
 
 async function stats(timeZone?: string): Promise<StatsResponse> {
-  const [sessionRows, quickLogRows] = await Promise.all([
+  const [sessionRows, exerciseRows, quickLogRows] = await Promise.all([
     rows("session", { order_by: [{ field: "date", direction: "desc" }], limit: 5000 }),
+    rows("exercise"),
     rows("quick-log", { limit: 5000 }),
   ]);
-  const sessions = sessionRows.map((row) => record<Session>(row));
-  const activeDates = new Set([
-    ...sessions.map((session) => dateKey(session.date, timeZone)).filter(Boolean),
-    ...quickLogRows.map((row) => dateKey(String(row.frontmatter.logged_at ?? ""), timeZone)).filter(Boolean),
-  ]);
-  const today = dateKey(new Date(), timeZone);
-  let currentStreak = 0;
-  const cursor = new Date(`${today}T12:00:00Z`);
-  while (activeDates.has(dateKey(cursor, "UTC"))) {
-    currentStreak += 1;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-  const monday = new Date(`${today}T12:00:00Z`);
-  const weekday = monday.getUTCDay();
-  monday.setUTCDate(monday.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
-  const mondayKey = dateKey(monday, "UTC");
-  const thisWeek = sessions.filter((session) => dateKey(session.date, timeZone) >= mondayKey);
-  const sets = thisWeek.reduce((total, session) => total + (session.exercises ?? []).reduce((sum, item) => sum + (item.sets?.length ?? 0), 0), 0);
-  return {
-    streak: {
-      currentStreak,
-      longestRun: currentStreak,
-      thisWeekSessions: thisWeek.length,
-      bankedCheatDays: 0,
-      cheatDayDates: [],
-      currentRunDates: [...activeDates].sort(),
-      runDates: [...activeDates].sort(),
-      runStatus: {
-        kind: activeDates.has(today) ? "active" : currentStreak ? "quiet-day" : "reset",
-        todayActive: activeDates.has(today),
-        quietDays: activeDates.has(today) ? 0 : 1,
-        lastActiveDate: [...activeDates].sort().slice(-1)[0] ?? null,
-        recoverableStreak: null,
-      },
-    },
-    prs: [],
-    volume: {
-      thisWeek: { sets, volume: 0 },
-      lastWeek: { sets: 0, volume: 0 },
-      muscleGroups: {},
-    },
-  };
+  return computeWorkoutStats({
+    sessions: sessionRows.map((row) => record<Session>(row)),
+    exercises: exerciseRows.map((row) => record<Exercise>(row)),
+    quickLogs: quickLogRows.map((row) => record<QuickLog>(row)),
+    timeZone,
+  });
 }
 
 async function weeklyStats(timeZone?: string): Promise<WeeklyStatsResponse> {
-  const sessionRows = await rows("session", { order_by: [{ field: "date", direction: "asc" }], limit: 5000 });
-  const totals = new Map<string, number>();
-  for (const row of sessionRows) {
-    const session = record<Session>(row);
-    const key = dateKey(session.date, timeZone);
-    const date = new Date(`${key}T12:00:00Z`);
-    const day = date.getUTCDay();
-    date.setUTCDate(date.getUTCDate() - (day === 0 ? 6 : day - 1));
-    const weekStart = dateKey(date, "UTC");
-    const count = session.exercises.reduce((sum, item) => sum + item.sets.length, 0);
-    totals.set(weekStart, (totals.get(weekStart) ?? 0) + count);
-  }
-  const current = new Date();
-  current.setUTCDate(current.getUTCDate() - ((current.getUTCDay() || 7) - 1));
-  const currentKey = dateKey(current, "UTC");
-  return { weeks: [...totals].sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([weekStart, sets]) => ({ weekStart, sets, isCurrentWeek: weekStart === currentKey })) };
+  const [sessionRows, quickLogRows] = await Promise.all([
+    rows("session", { limit: 20000 }),
+    rows("quick-log", { limit: 20000 }),
+  ]);
+  return computeWorkoutWeeklyStats({
+    sessions: sessionRows.map((row) => record<Session>(row)),
+    quickLogs: quickLogRows.map((row) => record<QuickLog>(row)),
+    timeZone,
+  });
 }
 
 export const connectApi = {

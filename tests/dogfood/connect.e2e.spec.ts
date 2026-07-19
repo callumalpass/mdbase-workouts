@@ -55,7 +55,7 @@ test("real workout UI authorizes and writes through MDBASE Connect", async ({ pa
   const collection = collections.find((item: { display_name: string }) => item.display_name === "MDBase Workouts");
   expect(collection).toBeTruthy();
 
-  const approved = await eventually(async () => {
+  await eventually(async () => {
     try {
       return await connector([
         "access", "approve", pending.id, collection.id,
@@ -66,10 +66,9 @@ test("real workout UI authorizes and writes through MDBASE Connect", async ({ pa
     }
   }, "The synchronized collection could not approve the request.");
 
-  // The desktop currently receives this callback URL. Navigating the original
-  // authorization tab preserves the application's PKCE browser context.
-  await page.goto(approved.redirect_uri);
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  // The authorization tab owns the PKCE browser context and returns itself to
+  // the application as soon as the local decision reaches the portal.
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "Quick Logs" })).toBeVisible();
   await expect(page.getByText("Dip", { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: "test-results/dogfood-connected-today.png", animations: "disabled" });
