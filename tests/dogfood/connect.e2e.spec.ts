@@ -8,6 +8,8 @@ const cli = process.env.MDBASE_CONNECT_DOGFOOD_CLI || "/home/calluma/projects/md
 const stateDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_STATE_DIR");
 const collectionDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_COLLECTION_DIR");
 const serverUrl = process.env.MDBASE_CONNECT_DOGFOOD_SERVER_URL || "http://localhost:18789";
+const userName = process.env.MDBASE_CONNECT_DOGFOOD_USER_NAME || "Workout Dogfood";
+const userEmail = process.env.MDBASE_CONNECT_DOGFOOD_USER_EMAIL || "workout-dogfood@localhost.test";
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -40,8 +42,8 @@ test("real workout UI authorizes and writes through MDBASE Connect", async ({ pa
 
   await page.getByRole("button", { name: "Choose workout collection" }).click();
   await expect(page.getByRole("heading", { name: "Open your account" })).toBeVisible();
-  await page.getByLabel("Name").fill("Workout Dogfood");
-  await page.getByLabel("Email").fill("workout-dogfood@localhost.test");
+  await page.getByLabel("Name").fill(userName);
+  await page.getByLabel("Email").fill(userEmail);
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "MDBase Workouts" })).toBeVisible();
