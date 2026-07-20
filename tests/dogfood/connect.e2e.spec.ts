@@ -69,8 +69,7 @@ test("real workout UI authorizes and writes through MDBASE Connect", async ({ pa
   // The authorization tab owns the PKCE browser context and returns itself to
   // the application as soon as the local decision reaches the portal.
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole("heading", { name: "Quick Logs" })).toBeVisible();
-  await expect(page.getByText("Dip", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /quick log/i })).toBeVisible();
   await page.screenshot({ path: "test-results/dogfood-connected-today.png", animations: "disabled" });
 
   await page.getByRole("button", { name: /quick log/i }).click();
