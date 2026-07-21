@@ -110,7 +110,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             onClick={() => void beginConnection()}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening MDBASE Connect…" : "Choose workout collection"}
+            {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening mdbase connect…" : "Choose workout collection"}
           </button>
           <p className="mt-3 text-center text-xs leading-5 text-faded">
             Local collections stay on your computer. Hosted collections remain available when it is offline.

@@ -225,7 +225,7 @@ npm start
 
 In production (`NODE_ENV=production`), the backend serves static files from `dist/`.
 
-## MDBASE Connect and GitHub Pages
+## mdbase connect and GitHub Pages
 
 Production browser builds connect through `https://connect.mdbase.dev`. The application manifest is generated at `public/.well-known/mdbase-app.json` and requests access only to the five workout record contracts. The OAuth callback returns to the application root, which keeps authorization compatible with the GitHub Pages subpath.
 

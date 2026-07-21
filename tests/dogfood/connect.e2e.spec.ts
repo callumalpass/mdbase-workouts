@@ -33,7 +33,7 @@ async function eventually<T>(action: () => Promise<T | null>, message: string): 
   throw new Error(message);
 }
 
-test("real workout UI authorizes and writes through MDBASE Connect", async ({ page }) => {
+test("real workout UI authorizes and writes through mdbase connect", async ({ page }) => {
   const quickLogsBefore = (await readdir(`${collectionDir}/quick-logs`)).filter((file) => file.endsWith(".md"));
 
   await page.goto("/");

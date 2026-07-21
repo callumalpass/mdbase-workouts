@@ -61,8 +61,8 @@ export default function SettingsSheet({ open, onClose }: Props) {
         {connected ? (
           <div className="border border-rule bg-card p-4">
             <p className="text-[10px] font-mono text-faded tracking-wider uppercase">Workout collection</p>
-            <p className="mt-2 text-sm font-semibold">{collectionName || "Connected through MDBASE Connect"}</p>
-            <p className="mt-1 text-xs text-faded">Connected through MDBASE Connect</p>
+            <p className="mt-2 text-sm font-semibold">{collectionName || "Connected through mdbase connect"}</p>
+            <p className="mt-1 text-xs text-faded">Connected through mdbase connect</p>
             <p className="mt-2 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
             <button
               type="button"

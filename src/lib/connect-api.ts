@@ -310,10 +310,10 @@ export const connectApi = {
       const description = await connect.describe();
       return {
         dataDir: connectionInfo()?.collectionId ?? "",
-        configDataDir: "MDBASE Connect",
+        configDataDir: "mdbase connect",
         collectionName: description.display_name,
       };
     },
-    update: async () => { throw new Error("Collection folders are managed in MDBASE Connect."); },
+    update: async () => { throw new Error("Collection folders are managed in mdbase connect."); },
   },
 };
