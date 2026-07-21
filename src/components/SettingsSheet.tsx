@@ -14,6 +14,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [originalDir, setOriginalDir] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [collectionName, setCollectionName] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -21,7 +22,10 @@ export default function SettingsSheet({ open, onClose }: Props) {
         setDataDir(s.configDataDir);
         setOriginalDir(s.configDataDir);
         setResolvedDir(s.dataDir);
+        setCollectionName(s.collectionName || "");
         setError("");
+      }).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Failed to load collection settings");
       });
     }
   }, [open]);
@@ -57,8 +61,9 @@ export default function SettingsSheet({ open, onClose }: Props) {
         {connected ? (
           <div className="border border-rule bg-card p-4">
             <p className="text-[10px] font-mono text-faded tracking-wider uppercase">Workout collection</p>
-            <p className="mt-2 text-sm font-semibold">Connected through MDBASE Connect</p>
-            <p className="mt-1 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
+            <p className="mt-2 text-sm font-semibold">{collectionName || "Connected through MDBASE Connect"}</p>
+            <p className="mt-1 text-xs text-faded">Connected through MDBASE Connect</p>
+            <p className="mt-2 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
             <button
               type="button"
               onClick={() => { connect.disconnect(); window.location.reload(); }}

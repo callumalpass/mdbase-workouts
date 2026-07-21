@@ -1,8 +1,32 @@
 {
   "manifest_version": 1,
   "name": "MDBase Workouts",
-  "homepage": "http://localhost:5187",
+  "homepage": "https://callumalpass.github.io/mdbase-workouts/",
   "redirect_uris": [
-    "http://localhost:5187/connect/callback"
-  ]
+    "https://callumalpass.github.io/mdbase-workouts/"
+  ],
+  "requirements": {
+    "contracts": [
+      {
+        "id": "mdbase.workouts.exercise",
+        "version": 1
+      },
+      {
+        "id": "mdbase.workouts.plan",
+        "version": 1
+      },
+      {
+        "id": "mdbase.workouts.plan-template",
+        "version": 1
+      },
+      {
+        "id": "mdbase.workouts.quick-log",
+        "version": 1
+      },
+      {
+        "id": "mdbase.workouts.session",
+        "version": 1
+      }
+    ]
+  }
 }

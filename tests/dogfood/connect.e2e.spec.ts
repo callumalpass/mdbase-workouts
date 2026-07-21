@@ -61,7 +61,7 @@ test("real workout UI authorizes and writes through MDBASE Connect", async ({ pa
     try {
       return await connector([
         "access", "approve", pending.id, collection.id,
-        "--operations", "read,query,create,update,delete",
+        "--operations", "describe,read,query,create,update,delete",
       ]);
     } catch {
       return null;

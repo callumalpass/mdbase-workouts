@@ -4,23 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n fe,be -c cyan,magenta \"vite --host\" \"tsx watch server/index.ts\"",
-    "dev:fe": "vite --host",
+    "dev": "npm run manifest && concurrently -n fe,be -c cyan,magenta \"vite --host\" \"tsx watch server/index.ts\"",
+    "dev:fe": "npm run manifest && vite --host",
     "dev:be": "tsx watch server/index.ts",
-    "build": "vite build",
+    "build": "npm run manifest && vite build",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:connect": "playwright test --config playwright.dogfood.config.ts",
+    "manifest": "node scripts/write-manifest.mjs",
     "screenshots": "playwright test tests/mobile-screenshots.spec.ts --project=mobile",
     "seed": "tsx scripts/seed-exercises.ts",
     "start": "NODE_ENV=production tsx server/index.ts"
   },
   "dependencies": {
-    "@callumalpass/mdbase": "file:../mdbase",
-    "@mdbase/connect": "file:../mdbase-connect/packages/client",
+    "@callumalpass/mdbase": "0.3.0-rc.1",
+    "@mdbase/connect": "file:vendor/mdbase-connect-0.1.0-alpha.1.tgz",
+    "@mdbase/connect-protocol": "file:vendor/mdbase-connect-protocol-0.1.0-alpha.1.tgz",
     "@hono/node-server": "^1.19.14",
     "hono": "^4.12.30",
     "react": "^18.3.1",
@@ -44,5 +46,10 @@
     "vite": "^6.4.3",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "tsx": {
+      "esbuild": "0.28.1"
+    }
   }
 }

@@ -16,26 +16,18 @@ import type {
   StatsResponse,
   WeeklyStatsResponse,
 } from "./types";
+import type {
+  JsonObject,
+  MdbaseOperationEnvelope,
+  QueryInput,
+  QueryResult,
+  RecordResult,
+  RecordSummary,
+} from "@mdbase/connect";
 import { connect, connectionInfo } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 
-interface QueryRow {
-  path: string;
-  frontmatter: Record<string, unknown>;
-}
-
-interface QueryResult {
-  results?: QueryRow[];
-  meta?: { total_count?: number; has_more?: boolean };
-  error?: { message?: string } | string;
-}
-
-interface OperationEnvelope {
-  valid?: boolean;
-  result?: Record<string, unknown>;
-  diagnostics?: Array<{ message?: string; severity?: string }>;
-  error?: { message?: string } | string;
-}
+type QueryRow = RecordSummary<JsonObject> & JsonObject;
 
 function requireConnection() {
   const value = connectionInfo();
@@ -43,54 +35,44 @@ function requireConnection() {
   return value;
 }
 
-function errorMessage(error: QueryResult["error"] | OperationEnvelope["error"]): string {
-  if (!error) return "MDBASE operation failed.";
-  return typeof error === "string" ? error : error.message || "MDBASE operation failed.";
-}
-
-function unwrapOperation(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object") throw new Error("MDBASE returned an invalid operation result.");
-  const envelope = value as OperationEnvelope;
-  if (envelope.error) throw new Error(errorMessage(envelope.error));
-  if (envelope.valid === false) {
-    const diagnostic = envelope.diagnostics?.find((item) => item.severity === "error") ?? envelope.diagnostics?.[0];
+function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result {
+  if (!envelope.valid) {
+    const diagnostic = envelope.diagnostics.find((item) => item.severity === "error") ?? envelope.diagnostics[0];
     throw new Error(diagnostic?.message || "The collection rejected this change.");
   }
-  return envelope.result && typeof envelope.result === "object" ? envelope.result : value as Record<string, unknown>;
+  return envelope.result;
 }
 
-async function query(input: Record<string, unknown>): Promise<QueryResult> {
+async function query(input: QueryInput): Promise<QueryResult> {
   requireConnection();
-  const value = await connect.query(input) as QueryResult;
-  if (value.error) throw new Error(errorMessage(value.error));
-  return value;
+  return validResult(await connect.query(input));
 }
 
-async function read(path: string): Promise<Record<string, unknown>> {
+async function read(path: string): Promise<RecordResult> {
   requireConnection();
-  return unwrapOperation(await connect.read({ path }));
+  return validResult(await connect.read({ path }));
 }
 
-async function create(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function create(input: Parameters<typeof connect.create>[0]): Promise<RecordResult> {
   requireConnection();
-  return unwrapOperation(await connect.create(input));
+  return validResult(await connect.create(input));
 }
 
-async function update(path: string, fields: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function update(path: string, patch: JsonObject): Promise<RecordResult> {
   requireConnection();
-  return unwrapOperation(await connect.update({ path, fields }));
+  return validResult(await connect.update({ path, patch }));
 }
 
 async function remove(path: string): Promise<void> {
   requireConnection();
-  unwrapOperation(await connect.delete({ path }));
+  validResult(await connect.delete({ path }));
 }
 
 function record<T>(row: QueryRow): T {
   return { path: row.path, ...row.frontmatter } as T;
 }
 
-function operationRecord<T>(value: Record<string, unknown>, fallbackPath: string): T {
+function operationRecord<T>(value: RecordResult, fallbackPath: string): T {
   const frontmatter = value.frontmatter && typeof value.frontmatter === "object"
     ? value.frontmatter as Record<string, unknown>
     : {};
@@ -129,7 +111,7 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-async function rows(type: string, extra: Record<string, unknown> = {}): Promise<QueryRow[]> {
+async function rows(type: string, extra: QueryInput = {}): Promise<QueryRow[]> {
   const result = await query({ types: [type], include_body: false, ...extra });
   return result.results ?? [];
 }
@@ -221,7 +203,7 @@ export const connectApi = {
     history: exerciseHistory,
     create: async (data: CreateExerciseInput) => {
       const path = `exercises/${slugify(data.name)}.md`;
-      return operationRecord<Exercise>(await create({ path, type: "exercise", frontmatter: data }), path);
+      return operationRecord<Exercise>(await create({ path, type: "exercise", frontmatter: { ...data } }), path);
     },
     update: async (slug: string, data: Partial<CreateExerciseInput>) => operationRecord<Exercise>(await update(`exercises/${slug}.md`, data), `exercises/${slug}.md`),
     lastSets: async (slugs: string[]) => {
@@ -324,7 +306,14 @@ export const connectApi = {
     };
   },
   settings: {
-    get: async () => ({ dataDir: connectionInfo()?.collectionId ?? "", configDataDir: "MDBASE Connect" }),
+    get: async () => {
+      const description = await connect.describe();
+      return {
+        dataDir: connectionInfo()?.collectionId ?? "",
+        configDataDir: "MDBASE Connect",
+        collectionName: description.display_name,
+      };
+    },
     update: async () => { throw new Error("Collection folders are managed in MDBASE Connect."); },
   },
 };

@@ -57,6 +57,9 @@ collection:
     exercises[].exercise:
       target_type: any
       validate_exists: false
+x-mdbase-workouts:
+  contract: mdbase.workouts.plan-template
+  version: 1
 ---
 
 

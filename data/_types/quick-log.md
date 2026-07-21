@@ -44,6 +44,9 @@ collection:
     exercise:
       target_type: any
       validate_exists: false
+x-mdbase-workouts:
+  contract: mdbase.workouts.quick-log
+  version: 1
 ---
 
 

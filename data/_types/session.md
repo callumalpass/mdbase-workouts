@@ -77,6 +77,9 @@ collection:
     plan:
       target_type: any
       validate_exists: false
+x-mdbase-workouts:
+  contract: mdbase.workouts.session
+  version: 1
 ---
 
 

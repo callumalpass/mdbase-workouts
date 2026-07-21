@@ -1,22 +1,30 @@
-name: CI
+name: Test and deploy Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: [main, dogfood/mdbase-connect]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate:
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -27,3 +35,43 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      - name: Build Pages application
+        run: npm run build
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verify application manifest
+        env:
+          MANIFEST_URL: https://callumalpass.github.io/mdbase-workouts/.well-known/mdbase-app.json?commit=${{ github.sha }}
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-all-errors "$MANIFEST_URL" --output "$RUNNER_TEMP/mdbase-app.json"
+          node -e 'const manifest = require(process.env.RUNNER_TEMP + "/mdbase-app.json"); if (manifest.name !== "MDBase Workouts") process.exit(1)'

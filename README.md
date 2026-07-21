@@ -2,6 +2,8 @@
 
 A workout tracking application that stores all data as markdown files with YAML frontmatter, managed by [mdbase](https://github.com/callumalpass/mdbase-spec). Users plan workouts, log sessions with per-set tracking, record quick one-off exercises, and browse their history -- all persisted as human-readable `.md` files on disk rather than in a traditional database.
 
+The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase/connect` browser SDK to open a compatible local or hosted workout collection.
+
 This project is an implementation of [mdbase-spec](https://github.com/callumalpass/mdbase-spec).
 
 ## Repository purpose
@@ -14,8 +16,8 @@ This project is an implementation of [mdbase-spec](https://github.com/callumalpa
 
 The app has three layers:
 
-- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. It communicates with the backend exclusively through JSON API calls. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
-- **Backend API** (`server/`): A Hono server running on Node. Each resource type (exercises, sessions, plans, plan-templates, quick-logs) has its own route file exposing standard CRUD endpoints. A `/api/today` endpoint aggregates today's plans, sessions, quick logs, and available templates into a single response. The server uses `@callumalpass/mdbase` to read, write, query, and validate markdown records.
+- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. The hosted build reads and writes through `@mdbase/connect`; local development uses the JSON API unless Connect is explicitly enabled. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
+- **Backend API** (`server/`): An optional Hono server for local and self-hosted development. Each resource type (exercises, sessions, plans, plan-templates, quick-logs) has its own route file exposing standard CRUD endpoints. A `/api/today` endpoint aggregates today's plans, sessions, quick logs, and available templates into a single response. The server uses `@callumalpass/mdbase` to read, write, query, and validate markdown records.
 - **Data storage** (`data/`): Plain markdown files organized into folders by type. Each file has YAML frontmatter containing structured fields and an optional markdown body. Type definitions in `data/_types/*.md` declare the schema for each record type. Cross-record references use wikilink syntax (e.g. `[[exercises/bench-press]]`).
 
 In development, Vite proxies `/api` requests to the backend. In production, the backend serves the built frontend assets from `dist/`.
@@ -222,6 +224,22 @@ npm start
 ```
 
 In production (`NODE_ENV=production`), the backend serves static files from `dist/`.
+
+## MDBASE Connect and GitHub Pages
+
+Production browser builds connect through `https://connect.mdbase.dev`. The application manifest is generated at `public/.well-known/mdbase-app.json` and requests access only to the five workout record contracts. The OAuth callback returns to the application root, which keeps authorization compatible with the GitHub Pages subpath.
+
+To exercise Connect against a local control plane:
+
+```bash
+MDBASE_WORKOUTS_ORIGIN=http://localhost:5187 \
+MDBASE_WORKOUTS_BASE_PATH=/ \
+VITE_MDBASE_CONNECT=1 \
+VITE_MDBASE_CONNECT_URL=http://localhost:18789 \
+npm run dev:fe -- --host 127.0.0.1 --port 5187 --strictPort
+```
+
+The GitHub Actions workflow typechecks, runs unit and browser tests, builds the static app, and deploys `dist/` to GitHub Pages on pushes to `main`. It can also be dispatched manually from a branch for a release candidate deployment.
 
 ## Scripts
 

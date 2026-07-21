@@ -173,6 +173,7 @@ export interface SessionListResponse {
 export interface SettingsResponse {
   dataDir: string;
   configDataDir: string;
+  collectionName?: string;
 }
 
 export interface CreateExerciseInput {

@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { connect, connectServerUrl, connectionInfo, workoutOperations } from "../lib/connect";
+import {
+  clearAuthorizationCallback,
+  connect,
+  connectErrorMessage,
+  connectIsRequired,
+  connectionInfo,
+  workoutOperations,
+} from "../lib/connect";
 
 type GateState = "checking" | "disconnected" | "connecting" | "connected" | "error";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
+  if (!connectIsRequired()) return <>{children}</>;
+  return <RequiredConnectGate>{children}</RequiredConnectGate>;
+}
+
+function RequiredConnectGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>(() => connectionInfo() ? "connected" : "checking");
   const [error, setError] = useState("");
   const completingCallback = useRef(false);
@@ -17,22 +29,22 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
       return;
     }
     if (denied) {
-      setError(denied === "access_denied" ? "Access was not granted." : denied);
+      setError(callback.searchParams.get("error_description") || (denied === "access_denied" ? "Access was not granted." : denied));
       setState("error");
-      history.replaceState({}, "", "/");
+      clearAuthorizationCallback();
       return;
     }
     if (completingCallback.current) return;
     completingCallback.current = true;
     setState("connecting");
-    connect.completeAuthorization(location.href)
+    connect.completeAuthorization()
       .then(() => {
-        history.replaceState({}, "", "/");
+        clearAuthorizationCallback();
         setState("connected");
       })
       .catch((reason: unknown) => {
         completingCallback.current = false;
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setError(connectErrorMessage(reason));
         setState("error");
       });
   }, []);
@@ -45,7 +57,7 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
     try {
       await connect.authorize(workoutOperations);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(connectErrorMessage(reason));
       setState("error");
     }
   }
@@ -58,7 +70,7 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faded">Training ledger</p>
             <p className="mt-1 text-sm italic">MDBase Workouts</p>
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-blush">Local files</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-blush">Your records</span>
         </header>
 
         <div className="px-5 py-7">
@@ -67,7 +79,7 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
             Open your training record.
           </h1>
           <p className="mt-3 text-sm leading-6 text-faded">
-            Choose the workout collection on this computer. The website receives only the actions you approve.
+            Choose a compatible workout collection. The website receives only the record access you approve.
           </p>
 
           <div className="my-7 grid grid-cols-[1fr_auto_1fr] items-center" aria-label="Connection route">
@@ -81,7 +93,7 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
               <span className="h-px w-5 bg-ocean" />
             </div>
             <div className="border border-rule bg-paper p-3 text-center">
-              <span className="block font-mono text-[9px] uppercase tracking-widest text-faded">Your computer</span>
+              <span className="block font-mono text-[9px] uppercase tracking-widest text-faded">Your collection</span>
               <strong className="mt-1 block text-sm font-semibold">Markdown</strong>
             </div>
           </div>
@@ -100,7 +112,9 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
           >
             {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening MDBASE Connect…" : "Choose workout collection"}
           </button>
-          <p className="mt-3 truncate text-center font-mono text-[9px] text-faded">{connectServerUrl()}</p>
+          <p className="mt-3 text-center text-xs leading-5 text-faded">
+            Local collections stay on your computer. Hosted collections remain available when it is offline.
+          </p>
         </div>
       </section>
     </main>

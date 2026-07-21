@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: "./",
   plugins: [
     react(),
     VitePWA({
@@ -12,6 +13,8 @@ export default defineConfig({
         name: "MDBase Workouts",
         short_name: "Workouts",
         description: "Workout tracker powered by MDBase",
+        start_url: ".",
+        scope: ".",
         theme_color: "#ECE8E1",
         background_color: "#ECE8E1",
         display: "standalone",
