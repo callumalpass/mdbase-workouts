@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect, workoutOperations } from "./connect";
-import { connectApi } from "./connect-api";
+import { connectApi, invalidateConnectApiCache } from "./connect-api";
 
 beforeEach(() => {
+  invalidateConnectApiCache();
   vi.spyOn(connect, "connection").mockReturnValue({
     collectionId: "workouts-test",
     operations: workoutOperations,
     scope: { contracts: [] },
+    route: "relay",
+    directAccess: "permission_required",
   });
 });
 
@@ -71,5 +74,90 @@ describe("Connect workout API", () => {
     });
 
     await expect(connectApi.exercises.list()).rejects.toThrow("The workout query is not valid.");
+  });
+
+  it("shares collection scans between dashboard stats", async () => {
+    const query = vi.spyOn(connect, "query").mockResolvedValue({
+      valid: true,
+      diagnostics: [],
+      result: {
+        results: [],
+        meta: { total_count: 0, has_more: false },
+      },
+    });
+
+    await Promise.all([
+      connectApi.stats.get("Australia/Melbourne"),
+      connectApi.stats.weekly("Australia/Melbourne"),
+    ]);
+
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(query.mock.calls.map(([input]) => input?.types?.[0]).sort()).toEqual([
+      "exercise",
+      "quick-log",
+      "session",
+    ]);
+  });
+
+  it("keeps a cold Today startup to seven collection operations", async () => {
+    const query = vi.spyOn(connect, "query").mockResolvedValue({
+      valid: true,
+      diagnostics: [],
+      result: {
+        results: [],
+        meta: { total_count: 0, has_more: false },
+      },
+    });
+
+    await Promise.all([
+      connectApi.today("Australia/Melbourne"),
+      connectApi.exercises.list(),
+      connectApi.stats.get("Australia/Melbourne"),
+      connectApi.stats.weekly("Australia/Melbourne"),
+    ]);
+
+    expect(query).toHaveBeenCalledTimes(7);
+  });
+
+  it("does not let an invalidated source request replace fresh rows", async () => {
+    let resolveStale!: (value: Awaited<ReturnType<typeof connect.query>>) => void;
+    const stale = new Promise<Awaited<ReturnType<typeof connect.query>>>((done) => {
+      resolveStale = done;
+    });
+    const query = vi.spyOn(connect, "query")
+      .mockImplementationOnce(() => stale)
+      .mockResolvedValue({
+        valid: true,
+        diagnostics: [],
+        result: {
+          results: [{
+            path: "exercises/fresh.md",
+            frontmatter: { name: "Fresh" },
+            types: ["exercise"],
+          }],
+          meta: { total_count: 1, has_more: false },
+        },
+      });
+
+    const staleResult = connectApi.exercises.list();
+    invalidateConnectApiCache();
+    const freshResult = connectApi.exercises.list();
+    resolveStale({
+      valid: true,
+      diagnostics: [],
+      result: {
+        results: [{
+          path: "exercises/stale.md",
+          frontmatter: { name: "Stale" },
+          types: ["exercise"],
+        }],
+        meta: { total_count: 1, has_more: false },
+      },
+    });
+
+    await expect(staleResult).resolves.toEqual([expect.objectContaining({ name: "Stale" })]);
+    await expect(freshResult).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
+    await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });

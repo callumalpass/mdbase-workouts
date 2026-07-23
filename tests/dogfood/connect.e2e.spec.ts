@@ -74,6 +74,10 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   await expect(page.getByRole("button", { name: /quick log/i })).toBeVisible();
   await page.screenshot({ path: "test-results/dogfood-connected-today.png", animations: "disabled" });
 
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Choose workout collection" })).toHaveCount(0);
+
   await page.getByRole("button", { name: /quick log/i }).click();
   await expect(page.getByRole("heading", { name: "Quick Log", exact: true })).toBeVisible();
   await page.getByPlaceholder("Search exercises...").fill("Bench Press");

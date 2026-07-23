@@ -57,19 +57,23 @@ export default function CalendarTab() {
   const loadCalendarData = useCallback(async () => {
     setLoading(true);
     try {
-      const collected: Session[] = [];
-      let offset = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const res = await api.sessions.list(100, offset);
-        collected.push(...res.sessions);
-        offset += res.sessions.length;
-        hasMore = res.hasMore;
-      }
-
-      const allPlans = await api.plans.list();
-      const allQuickLogs = await api.quickLogs.list(500);
+      const loadSessions = async () => {
+        const collected: Session[] = [];
+        let offset = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const res = await api.sessions.list(100, offset);
+          collected.push(...res.sessions);
+          offset += res.sessions.length;
+          hasMore = res.hasMore && res.sessions.length > 0;
+        }
+        return collected;
+      };
+      const [collected, allPlans, allQuickLogs] = await Promise.all([
+        loadSessions(),
+        api.plans.list(),
+        api.quickLogs.list(500),
+      ]);
       setSessions(collected);
       setPlans(allPlans);
       setQuickLogs(allQuickLogs);

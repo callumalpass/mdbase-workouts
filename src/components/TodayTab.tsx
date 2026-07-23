@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { useToday } from "../hooks/useToday";
 import { useExercises } from "../hooks/useExercises";
+import { useCachedResource } from "../hooks/useCachedResource";
 import { parseWikilink, slugToName, formatTime, formatSet, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
 import { api } from "../lib/api";
@@ -31,9 +32,7 @@ export default function TodayTab() {
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [activeTemplate, setActiveTemplate] = useState<PlanTemplate | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [showStreakRules, setShowStreakRules] = useState(false);
-  const [weeklyStats, setWeeklyStats] = useState<WeeklyStatsResponse | null>(null);
   const [targetSets, setTargetSets] = useState<number>(
     () => Number(localStorage.getItem("workout-weekly-target") || 80)
   );
@@ -48,14 +47,25 @@ export default function TodayTab() {
   const [planning, setPlanning] = useState(false);
   const [planningError, setPlanningError] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const timeZone = getUserTimeZone();
+  const loadStats = useCallback(() => api.stats.get(timeZone), [timeZone]);
+  const loadWeeklyStats = useCallback(() => api.stats.weekly(timeZone), [timeZone]);
+  const { data: stats, refresh: refreshStats } = useCachedResource<StatsResponse>({
+    cacheKey: `stats:${timeZone}`,
+    load: loadStats,
+    errorMessage: "Failed to load workout stats",
+  });
+  const { data: weeklyStats, refresh: refreshWeeklyStats } = useCachedResource<WeeklyStatsResponse>({
+    cacheKey: `weekly-stats:${timeZone}`,
+    load: loadWeeklyStats,
+    errorMessage: "Failed to load weekly stats",
+  });
 
-  useEffect(() => {
-    api.stats.get(getUserTimeZone()).then(setStats).catch(() => {});
-  }, [data]);
-
-  useEffect(() => {
-    api.stats.weekly(getUserTimeZone()).then(setWeeklyStats).catch(() => {});
-  }, []);
+  const refreshAll = useCallback(() => {
+    void refresh();
+    void refreshStats();
+    void refreshWeeklyStats();
+  }, [refresh, refreshStats, refreshWeeklyStats]);
 
   // Restore in-progress session from localStorage
   const sessionRestoredRef = useRef(false);
@@ -139,7 +149,7 @@ export default function TodayTab() {
       haptics.tap();
       setPlanningTemplate(null);
       setPlanningDate(todayLocalDateKey());
-      refresh();
+      refreshAll();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create this plan.";
       setPlanningError(message);
@@ -590,20 +600,20 @@ export default function TodayTab() {
       <QuickLogSheet
         open={showQuickLog}
         onClose={() => setShowQuickLog(false)}
-        onLogged={refresh}
+        onLogged={refreshAll}
       />
 
       <PlanCreatorSheet
         open={showPlanCreator}
         onClose={() => setShowPlanCreator(false)}
-        onCreated={refresh}
+        onCreated={refreshAll}
       />
 
       <TemplateEditorSheet
         open={showTemplateEditor}
         template={editingTemplate}
         onClose={() => { setShowTemplateEditor(false); setEditingTemplate(null); }}
-        onSaved={refresh}
+        onSaved={refreshAll}
       />
 
       <ConfirmDialog
@@ -616,7 +626,7 @@ export default function TodayTab() {
           try {
             await api.planTemplates.delete(pathToSlug(deletingTemplate.path));
             setDeleteError("");
-            refresh();
+            refreshAll();
           } catch (err) {
             const message = err instanceof Error ? err.message : "Could not delete this template.";
             setDeleteError(message);
@@ -632,7 +642,7 @@ export default function TodayTab() {
           template={activeTemplate}
           exercises={allExercises}
           onClose={() => { setActivePlan(null); setActiveTemplate(null); sessionRestoredRef.current = false; }}
-          onSaved={refresh}
+          onSaved={refreshAll}
         />
       )}
     </div>

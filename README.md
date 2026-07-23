@@ -229,6 +229,8 @@ In production (`NODE_ENV=production`), the backend serves static files from `dis
 
 Production browser builds connect through `https://connect.mdbase.dev`. The application manifest is generated at `public/.well-known/mdbase-app.json` and requests access only to the five workout record contracts. The OAuth callback returns to the application root, which keeps authorization compatible with the GitHub Pages subpath.
 
+The browser keeps its authorization in local storage. On the same computer as the local connector, Settings can enable direct access so reads avoid the relay and the encrypted local grant remains usable after the relay login expires. The UI also keeps small, collection-scoped snapshots of Today, stats, exercises, and the first history page. These snapshots are cleared after writes and on disconnect, and are refreshed from mdbase in the background.
+
 To exercise Connect against a local control plane:
 
 ```bash

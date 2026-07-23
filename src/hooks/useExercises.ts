@@ -1,27 +1,26 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise } from "../lib/types";
+import { useCachedResource } from "./useCachedResource";
 
 export function useExercises() {
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    api.exercises.list().then((data) => {
-      setExercises(data);
-      setLoading(false);
-    });
-  }, []);
+  const load = useCallback(() => api.exercises.list(), []);
+  const { data, loading } = useCachedResource<Exercise[]>({
+    cacheKey: "exercises",
+    load,
+    errorMessage: "Failed to load exercises",
+  });
+  const exercises = data ?? [];
 
   const filtered = useMemo(() => {
     if (!search.trim()) return exercises;
     const q = search.toLowerCase();
     return exercises.filter(
-      (e) =>
-        e.name.toLowerCase().includes(q) ||
-        e.muscle_groups?.some((g) => g.toLowerCase().includes(q)) ||
-        e.equipment?.toLowerCase().includes(q)
+      (exercise) =>
+        exercise.name.toLowerCase().includes(q) ||
+        exercise.muscle_groups?.some((group) => group.toLowerCase().includes(q)) ||
+        exercise.equipment?.toLowerCase().includes(q)
     );
   }, [exercises, search]);
 
