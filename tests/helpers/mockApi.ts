@@ -6,6 +6,7 @@ export interface MockApiController {
     plans: any[];
     sessions: any[];
     sessionListQueries: Array<{ limit: number; offset: number }>;
+    todayReads: number;
   };
 }
 
@@ -187,6 +188,7 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
     plans: [] as any[],
     sessions: [] as any[],
     sessionListQueries: [] as Array<{ limit: number; offset: number }>,
+    todayReads: 0,
   };
 
   await page.route("**/api/**", async (route) => {
@@ -284,6 +286,7 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
     }
 
     if (path === "/api/today" && method === "GET") {
+      requests.todayReads += 1;
       const todaysSessions = sessions.filter((s) => s.date.startsWith(today));
       const todaysPlans = plans.filter((p) => p.date === today);
       const todaysQuickLogs = quickLogs.filter((q) => q.logged_at.startsWith(today));

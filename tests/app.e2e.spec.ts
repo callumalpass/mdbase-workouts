@@ -19,6 +19,18 @@ test.describe("workout tracker e2e", () => {
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
   });
 
+  test("a warm reopen uses the cached Today page", async ({ page }) => {
+    const mock = await setupMockApi(page);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    const readsAfterFirstOpen = mock.requests.todayReads;
+
+    await page.reload();
+
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    expect(mock.requests.todayReads).toBe(readsAfterFirstOpen);
+  });
+
   test("current run counter explains streak rules", async ({ page }) => {
     await setupMockApi(page);
     await page.goto("/");

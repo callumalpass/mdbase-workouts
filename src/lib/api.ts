@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { connectionInfo } from "./connect";
 import { connectApi } from "./connect-api";
+import { clearWorkoutCache } from "./workout-cache";
 
 const BASE = "/api";
 
@@ -31,7 +32,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
   }
-  return res.json();
+  const value = await res.json();
+  if (init?.method && init.method !== "GET") clearWorkoutCache();
+  return value;
 }
 
 const localApi = {

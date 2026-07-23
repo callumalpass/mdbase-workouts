@@ -25,7 +25,12 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     const denied = callback.searchParams.get("error");
     const hasCallback = callback.searchParams.has("code") || denied;
     if (!hasCallback) {
-      setState(connectionInfo() ? "connected" : "disconnected");
+      if (connectionInfo()) {
+        setState("connected");
+        void connect.checkDirectAccess();
+      } else {
+        setState("disconnected");
+      }
       return;
     }
     if (denied) {
@@ -41,6 +46,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
       .then(() => {
         clearAuthorizationCallback();
         setState("connected");
+        void connect.checkDirectAccess();
       })
       .catch((reason: unknown) => {
         completingCallback.current = false;

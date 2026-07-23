@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import { connect, connectionInfo } from "../lib/connect";
+import { clearWorkoutCache } from "../lib/workout-cache";
 
 interface Props {
   open: boolean;
@@ -8,16 +9,21 @@ interface Props {
 }
 
 export default function SettingsSheet({ open, onClose }: Props) {
-  const connected = connectionInfo();
+  const [connected, setConnected] = useState(() => connectionInfo());
   const [dataDir, setDataDir] = useState("");
   const [resolvedDir, setResolvedDir] = useState("");
   const [originalDir, setOriginalDir] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [collectionName, setCollectionName] = useState("");
+  const [directBusy, setDirectBusy] = useState(false);
+  const connectedCollectionId = connected?.collectionId;
+
+  useEffect(() => connect.onConnectionChange(setConnected), []);
 
   useEffect(() => {
     if (open) {
+      if (connectedCollectionId) void connect.checkDirectAccess();
       api.settings.get().then((s) => {
         setDataDir(s.configDataDir);
         setOriginalDir(s.configDataDir);
@@ -28,7 +34,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
         setError(err instanceof Error ? err.message : "Failed to load collection settings");
       });
     }
-  }, [open]);
+  }, [connectedCollectionId, open]);
 
   if (!open) return null;
 
@@ -48,6 +54,23 @@ export default function SettingsSheet({ open, onClose }: Props) {
     }
   };
 
+  const enableDirectAccess = async () => {
+    setDirectBusy(true);
+    setError("");
+    try {
+      const status = await connect.requestDirectAccess();
+      if (status === "denied") {
+        setError("Local network access is blocked in this browser.");
+      } else if (status === "unavailable") {
+        setError("The local mdbase connector could not be reached.");
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Direct access could not be enabled.");
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-ink/30" onClick={onClose} />
@@ -64,9 +87,44 @@ export default function SettingsSheet({ open, onClose }: Props) {
             <p className="mt-2 text-sm font-semibold">{collectionName || "Connected through mdbase connect"}</p>
             <p className="mt-1 text-xs text-faded">Connected through mdbase connect</p>
             <p className="mt-2 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
+            {connected.directAccess !== "disabled" && (
+              <div className="mt-4 border-t border-rule pt-4">
+                <p className="text-[10px] font-mono text-faded tracking-wider uppercase">
+                  Connection route
+                </p>
+                <p className="mt-2 text-sm font-semibold">
+                  {connected.route === "direct" || connected.directAccess === "available"
+                    ? "Direct on this computer"
+                    : "mdbase relay"}
+                </p>
+                {connected.directAccess === "available" || connected.route === "direct" ? (
+                  <p className="mt-1 text-xs leading-5 text-faded">
+                    Faster local reads are ready, and this collection stays available after the relay login expires.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-xs leading-5 text-faded">
+                      Use the local connector to avoid relay round trips and keep this collection connected on this computer.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={directBusy || connected.directAccess === "checking"}
+                      onClick={() => void enableDirectAccess()}
+                      className="mt-3 border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper disabled:opacity-50"
+                    >
+                      {directBusy || connected.directAccess === "checking" ? "Checking local connector..." : "Keep connected locally"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => { connect.disconnect(); window.location.reload(); }}
+              onClick={() => {
+                clearWorkoutCache(connected.collectionId);
+                connect.disconnect();
+                window.location.reload();
+              }}
               className="mt-4 border border-rule px-3 py-2 text-xs text-faded active:bg-paper"
             >
               Disconnect collection
