@@ -1,5 +1,6 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 3,
+  "id": "dev.mdbase.workouts",
   "name": "MDBase Workouts",
   "homepage": "https://callumalpass.github.io/mdbase-workouts/",
   "redirect_uris": [

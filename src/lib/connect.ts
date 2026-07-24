@@ -9,11 +9,11 @@ const environment = (import.meta as ImportMeta & {
 }).env;
 const serverUrl = String(environment.VITE_MDBASE_CONNECT_URL || "https://connect.mdbase.dev");
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
-const manifestUrl = new URL(".well-known/mdbase-app.json", appRoot).href;
+const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
 
 export const connect = new MdbaseConnect({
   serverUrl,
-  manifestUrl,
+  manifest,
   redirectUri: appRoot.href,
 });
 
