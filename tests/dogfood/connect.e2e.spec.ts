@@ -98,7 +98,7 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
 
   await connector(["access", "pause", "true"]);
   const pausedStatus = await page.evaluate(async (connectUrl) => {
-    const key = Object.keys(localStorage).find((item) => item.startsWith("mdbase-connect:token:"));
+    const key = Object.keys(localStorage).find((item) => item.includes(":token:"));
     if (!key) throw new Error("Connected token was not stored.");
     const token = JSON.parse(localStorage.getItem(key) || "{}");
     const response = await fetch(`${connectUrl}/v1/collections/${token.collectionId}/operations/read`, {

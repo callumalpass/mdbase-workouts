@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { MdbaseConnectionInfo } from "@mdbase/connect";
 import { connect } from "./connect";
 import {
   clearWorkoutCache,
@@ -8,13 +9,19 @@ import {
 } from "./workout-cache";
 
 function useCollection(collectionId: string) {
-  vi.spyOn(connect, "connection").mockReturnValue({
+  const info: MdbaseConnectionInfo = {
     collectionId,
+    displayName: collectionId,
     operations: [],
     scope: { contracts: [] },
     route: "relay",
     directAccess: "permission_required",
-  });
+  };
+  vi.spyOn(connect, "connections").mockReturnValue([info]);
+  vi.spyOn(connect, "connection").mockReturnValue({
+    collectionId,
+    info: () => info,
+  } as never);
 }
 
 describe("workout cache", () => {

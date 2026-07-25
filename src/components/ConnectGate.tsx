@@ -5,6 +5,11 @@ import {
   connectErrorMessage,
   connectIsRequired,
   connectionInfo,
+  activeConnection,
+  authorizationReturnTo,
+  finishAuthorization,
+  savedConnections,
+  selectConnection,
   workoutOperations,
 } from "../lib/connect";
 
@@ -22,46 +27,44 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const callback = new URL(location.href);
-    const denied = callback.searchParams.get("error");
-    const hasCallback = callback.searchParams.has("code") || denied;
+    const hasCallback = callback.searchParams.has("code") || callback.searchParams.has("error");
     if (!hasCallback) {
       if (connectionInfo()) {
         setState("connected");
-        void connect.checkDirectAccess();
+        void activeConnection()?.checkDirectAccess();
       } else {
         setState("disconnected");
       }
       return;
     }
-    if (denied) {
-      setError(callback.searchParams.get("error_description") || (denied === "access_denied" ? "Access was not granted." : denied));
-      setState("error");
-      clearAuthorizationCallback();
-      return;
-    }
     if (completingCallback.current) return;
     completingCallback.current = true;
     setState("connecting");
-    connect.completeAuthorization()
-      .then(() => {
-        clearAuthorizationCallback();
+    connect.completeAuthorization(location.href)
+      .then((result) => {
+        const connection = finishAuthorization(result);
         setState("connected");
-        void connect.checkDirectAccess();
+        void connection.checkDirectAccess();
       })
       .catch((reason: unknown) => {
         completingCallback.current = false;
         setError(connectErrorMessage(reason));
         setState("error");
+        clearAuthorizationCallback();
       });
   }, []);
 
   if (state === "connected") return <>{children}</>;
 
-  async function beginConnection() {
+  async function beginConnection(collectionId?: string) {
     setState("connecting");
     setError("");
     try {
-      await connect.authorize(workoutOperations);
+      await connect.authorize({
+        operations: workoutOperations,
+        collectionId,
+        returnTo: authorizationReturnTo(),
+      });
     } catch (reason) {
       setError(connectErrorMessage(reason));
       setState("error");
@@ -110,13 +113,42 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             </div>
           )}
 
+          {savedConnections().length ? (
+            <div className="mb-4 border-y border-rule">
+              {savedConnections().map((connection) => (
+                <button
+                  key={connection.collectionId}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-4 border-b border-rule px-3 py-3 text-left last:border-b-0 active:bg-paper"
+                  onClick={() => {
+                    selectConnection(connection.collectionId, true);
+                    setState("connected");
+                    void connect.connection(connection.collectionId)?.checkDirectAccess();
+                  }}
+                >
+                  <span>
+                    <strong className="block text-sm">{connection.displayName}</strong>
+                    <small className="mt-1 block font-mono text-[9px] text-faded">
+                      {connection.collectionId}
+                    </small>
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-ocean">
+                    Open
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <button
             type="button"
             disabled={state === "checking" || state === "connecting"}
-            onClick={() => void beginConnection()}
+            onClick={() => void beginConnection(
+              new URL(location.href).searchParams.get("collection") ?? undefined,
+            )}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening mdbase connect…" : "Choose workout collection"}
+            {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening mdbase connect…" : savedConnections().length ? "Connect another collection" : "Choose workout collection"}
           </button>
           <p className="mt-3 text-center text-xs leading-5 text-faded">
             Local collections stay on your computer. Hosted collections remain available when it is offline.
