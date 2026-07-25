@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
-import { connect, connectionInfo } from "../lib/connect";
+import {
+  activeConnection,
+  authorizationReturnTo,
+  connect,
+  connectionInfo,
+  savedConnections,
+  selectConnection,
+  workoutOperations,
+} from "../lib/connect";
 import { clearWorkoutCache } from "../lib/workout-cache";
 
 interface Props {
@@ -19,11 +27,14 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [directBusy, setDirectBusy] = useState(false);
   const connectedCollectionId = connected?.collectionId;
 
-  useEffect(() => connect.onConnectionChange(setConnected), []);
+  useEffect(
+    () => connect.onConnectionsChange(() => setConnected(connectionInfo())),
+    [],
+  );
 
   useEffect(() => {
     if (open) {
-      if (connectedCollectionId) void connect.checkDirectAccess();
+      if (connectedCollectionId) void activeConnection()?.checkDirectAccess();
       api.settings.get().then((s) => {
         setDataDir(s.configDataDir);
         setOriginalDir(s.configDataDir);
@@ -58,7 +69,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
     setDirectBusy(true);
     setError("");
     try {
-      const status = await connect.requestDirectAccess();
+      const status = await activeConnection()?.requestDirectAccess();
       if (status === "denied") {
         setError("Local network access is blocked in this browser.");
       } else if (status === "unavailable") {
@@ -122,12 +133,37 @@ export default function SettingsSheet({ open, onClose }: Props) {
               type="button"
               onClick={() => {
                 clearWorkoutCache(connected.collectionId);
-                connect.disconnect();
+                activeConnection()?.forget();
                 window.location.reload();
               }}
               className="mt-4 border border-rule px-3 py-2 text-xs text-faded active:bg-paper"
             >
               Disconnect collection
+            </button>
+            {savedConnections().filter(
+              (connection) => connection.collectionId !== connected.collectionId,
+            ).map((connection) => (
+              <button
+                key={connection.collectionId}
+                type="button"
+                onClick={() => {
+                  selectConnection(connection.collectionId, true);
+                  window.location.reload();
+                }}
+                className="mt-2 block w-full border border-rule px-3 py-2 text-left text-xs text-faded active:bg-paper"
+              >
+                Open {connection.displayName}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => void connect.authorize({
+                operations: workoutOperations,
+                returnTo: authorizationReturnTo(),
+              })}
+              className="mt-2 block w-full border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper"
+            >
+              Connect another collection
             </button>
           </div>
         ) : <>

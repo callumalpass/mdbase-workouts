@@ -18,13 +18,14 @@ import type {
 } from "./types";
 import type {
   JsonObject,
+  MdbaseConnection,
   MdbaseOperationEnvelope,
   QueryInput,
   QueryResult,
   RecordResult,
   RecordSummary,
 } from "@mdbase/connect";
-import { connect, connectionInfo } from "./connect";
+import { activeConnection, connectionInfo } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
@@ -39,9 +40,9 @@ const sourceCache = new Map<string, {
 }>();
 
 function requireConnection() {
-  const value = connectionInfo();
-  if (!value) throw new Error("Choose a workout collection before loading records.");
-  return value;
+  const connection = activeConnection();
+  if (!connection) throw new Error("Choose a workout collection before loading records.");
+  return connection;
 }
 
 function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result {
@@ -53,32 +54,27 @@ function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result 
 }
 
 async function query(input: QueryInput): Promise<QueryResult> {
-  requireConnection();
-  return validResult(await connect.query(input));
+  return validResult(await requireConnection().query(input));
 }
 
 async function read(path: string): Promise<RecordResult> {
-  requireConnection();
-  return validResult(await connect.read({ path }));
+  return validResult(await requireConnection().read({ path }));
 }
 
-async function create(input: Parameters<typeof connect.create>[0]): Promise<RecordResult> {
-  requireConnection();
-  const result = validResult(await connect.create(input));
+async function create(input: Parameters<MdbaseConnection["create"]>[0]): Promise<RecordResult> {
+  const result = validResult(await requireConnection().create(input));
   invalidateConnectApiCache();
   return result;
 }
 
 async function update(path: string, patch: JsonObject): Promise<RecordResult> {
-  requireConnection();
-  const result = validResult(await connect.update({ path, patch }));
+  const result = validResult(await requireConnection().update({ path, patch }));
   invalidateConnectApiCache();
   return result;
 }
 
 async function remove(path: string): Promise<void> {
-  requireConnection();
-  validResult(await connect.delete({ path }));
+  validResult(await requireConnection().delete({ path }));
   invalidateConnectApiCache();
 }
 
@@ -358,7 +354,7 @@ export const connectApi = {
   },
   settings: {
     get: async () => {
-      const description = await connect.describe();
+      const description = await requireConnection().describe();
       return {
         dataDir: connectionInfo()?.collectionId ?? "",
         configDataDir: "mdbase connect",
