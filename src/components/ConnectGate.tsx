@@ -4,11 +4,14 @@ import {
   connect,
   connectErrorMessage,
   connectIsRequired,
+  completeAuthorization,
   connectionInfo,
   activeConnection,
   authorizationReturnTo,
-  finishAuthorization,
+  isAuthorizationCallback,
+  onConnectionChange,
   savedConnections,
+  selectedCollectionId,
   selectConnection,
   workoutOperations,
 } from "../lib/connect";
@@ -26,9 +29,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   const completingCallback = useRef(false);
 
   useEffect(() => {
-    const callback = new URL(location.href);
-    const hasCallback = callback.searchParams.has("code") || callback.searchParams.has("error");
-    if (!hasCallback) {
+    if (!isAuthorizationCallback(location.href)) {
       if (connectionInfo()) {
         setState("connected");
         void activeConnection()?.checkDirectAccess();
@@ -40,9 +41,8 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     if (completingCallback.current) return;
     completingCallback.current = true;
     setState("connecting");
-    connect.completeAuthorization(location.href)
-      .then((result) => {
-        const connection = finishAuthorization(result);
+    completeAuthorization()
+      .then((connection) => {
         setState("connected");
         void connection.checkDirectAccess();
       })
@@ -53,6 +53,15 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         clearAuthorizationCallback();
       });
   }, []);
+
+  useEffect(
+    () => onConnectionChange((connection) => {
+      if (!completingCallback.current) {
+        setState(connection ? "connected" : "disconnected");
+      }
+    }),
+    [],
+  );
 
   if (state === "connected") return <>{children}</>;
 
@@ -144,7 +153,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             type="button"
             disabled={state === "checking" || state === "connecting"}
             onClick={() => void beginConnection(
-              new URL(location.href).searchParams.get("collection") ?? undefined,
+              selectedCollectionId() ?? undefined,
             )}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >

@@ -20,7 +20,7 @@ beforeEach(() => {
     collectionId: "workouts-test",
     displayName: "Test workouts",
     operations: workoutOperations,
-    scope: { contracts: [] },
+    scope: { contracts: [], access: "full_collection" },
     route: "relay",
     directAccess: "permission_required",
   };

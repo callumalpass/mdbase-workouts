@@ -5,6 +5,7 @@ import {
   authorizationReturnTo,
   connect,
   connectionInfo,
+  onConnectionChange,
   savedConnections,
   selectConnection,
   workoutOperations,
@@ -28,7 +29,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const connectedCollectionId = connected?.collectionId;
 
   useEffect(
-    () => connect.onConnectionsChange(() => setConnected(connectionInfo())),
+    () => onConnectionChange(() => setConnected(connectionInfo())),
     [],
   );
 
