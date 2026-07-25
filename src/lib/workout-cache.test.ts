@@ -13,7 +13,7 @@ function useCollection(collectionId: string) {
     collectionId,
     displayName: collectionId,
     operations: [],
-    scope: { contracts: [] },
+    scope: { contracts: [], access: "full_collection" },
     route: "relay",
     directAccess: "permission_required",
   };

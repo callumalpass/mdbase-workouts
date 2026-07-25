@@ -1,7 +1,7 @@
 import {
+  MdbaseBrowserLocation,
   MdbaseConnect,
   MdbaseConnectError,
-  type MdbaseAuthorizationResult,
   type MdbaseConnection,
   type MdbaseConnectionInfo,
   type MdbaseOperation,
@@ -19,6 +19,9 @@ export const connect = new MdbaseConnect({
   manifest,
   redirectUri: appRoot.href,
 });
+const connectLocation = new MdbaseBrowserLocation(connect, {
+  fallbackPath: appRoot.pathname,
+});
 
 export const workoutOperations: MdbaseOperation[] = [
   "describe",
@@ -29,19 +32,12 @@ export const workoutOperations: MdbaseOperation[] = [
   "delete",
 ];
 
-const COLLECTION_PARAMETER = "collection";
-
 export function savedConnections(): MdbaseConnectionInfo[] {
   return connect.connections();
 }
 
 export function activeConnection(): MdbaseConnection | null {
-  const selected = new URL(location.href).searchParams.get(COLLECTION_PARAMETER);
-  if (selected) return connect.connection(selected);
-  const saved = connect.connections();
-  if (saved.length !== 1) return null;
-  selectConnection(saved[0].collectionId, true);
-  return connect.connection(saved[0].collectionId);
+  return connectLocation.activeConnection();
 }
 
 export function connectionInfo(): MdbaseConnectionInfo | null {
@@ -49,32 +45,15 @@ export function connectionInfo(): MdbaseConnectionInfo | null {
 }
 
 export function selectConnection(collectionId: string, replace = false): void {
-  const url = new URL(location.href);
-  url.searchParams.set(COLLECTION_PARAMETER, collectionId);
-  for (const parameter of ["code", "state", "error", "error_description"]) {
-    url.searchParams.delete(parameter);
-  }
-  history[replace ? "replaceState" : "pushState"]({}, "", url);
+  connectLocation.selectConnection(collectionId, { replace });
 }
 
 export function authorizationReturnTo(): string {
-  const url = new URL(location.href);
-  for (const parameter of ["code", "state", "error", "error_description"]) {
-    url.searchParams.delete(parameter);
-  }
-  return `${url.pathname}${url.search}${url.hash}`;
+  return connectLocation.authorizationReturnTo();
 }
 
-export function finishAuthorization(
-  result: MdbaseAuthorizationResult,
-): MdbaseConnection {
-  const returnTo = new URL(result.returnTo ?? appRoot.href, location.origin);
-  returnTo.searchParams.set(COLLECTION_PARAMETER, result.connection.collectionId);
-  for (const parameter of ["code", "state", "error", "error_description"]) {
-    returnTo.searchParams.delete(parameter);
-  }
-  history.replaceState({}, "", returnTo);
-  return result.connection;
+export function completeAuthorization(): Promise<MdbaseConnection> {
+  return connectLocation.completeAuthorization();
 }
 
 export function connectIsRequired(): boolean {
@@ -82,11 +61,21 @@ export function connectIsRequired(): boolean {
 }
 
 export function clearAuthorizationCallback(): void {
-  const url = new URL(location.href);
-  for (const parameter of ["code", "state", "error", "error_description"]) {
-    url.searchParams.delete(parameter);
-  }
-  history.replaceState({}, "", url);
+  connectLocation.clearAuthorizationCallback();
+}
+
+export function isAuthorizationCallback(value: string): boolean {
+  return connectLocation.isAuthorizationCallback(value);
+}
+
+export function selectedCollectionId(): string | null {
+  return connectLocation.selectedCollectionId();
+}
+
+export function onConnectionChange(
+  listener: (connection: MdbaseConnection | null) => void,
+): () => void {
+  return connectLocation.onChange(({ connection }) => listener(connection));
 }
 
 export function connectErrorMessage(error: unknown): string {
