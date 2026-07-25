@@ -24,7 +24,7 @@ const provisions = await Promise.all(requiredTypes.map(async ({ name, contract }
 
 await mkdir(resolve(target, ".."), { recursive: true });
 await writeFile(target, `${JSON.stringify({
-  manifest_version: 3,
+  manifest_version: 1,
   id: "dev.mdbase.workouts",
   name: "MDBase Workouts",
   homepage: appUrl,
