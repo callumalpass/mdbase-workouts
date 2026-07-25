@@ -7,7 +7,6 @@ const run = promisify(execFile);
 const cli = process.env.MDBASE_CONNECT_DOGFOOD_CLI || "/home/calluma/projects/mdbase-connect-dogfood/target/debug/mdbase-connect";
 const stateDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_STATE_DIR");
 const collectionDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_COLLECTION_DIR");
-const serverUrl = process.env.MDBASE_CONNECT_DOGFOOD_SERVER_URL || "http://localhost:18789";
 const userName = process.env.MDBASE_CONNECT_DOGFOOD_USER_NAME || "Workout Dogfood";
 const userEmail = process.env.MDBASE_CONNECT_DOGFOOD_USER_EMAIL || "workout-dogfood@localhost.test";
 
@@ -47,29 +46,11 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "MDBase Workouts" })).toBeVisible();
-  await expect(page.getByText("Waiting for a local decision…")).toBeVisible();
-
-  const pending = await eventually(async () => {
-    const snapshot = await connector(["access", "snapshot"]);
-    return snapshot.pending_authorizations?.find((request: { application_name: string }) => request.application_name === "MDBase Workouts") ?? null;
-  }, "Authorization request did not reach the local connector.");
-  const collections = await connector(["collection", "list"]);
-  const collection = collections.find((item: { display_name: string }) => item.display_name === "MDBase Workouts");
-  expect(collection).toBeTruthy();
-
-  await eventually(async () => {
-    try {
-      return await connector([
-        "access", "approve", pending.id, collection.id,
-        "--operations", "describe,read,query,create,update,delete",
-      ]);
-    } catch {
-      return null;
-    }
-  }, "The synchronized collection could not approve the request.");
+  await page.getByRole("button", { name: "Allow MDBase Workouts" }).click();
 
   // The authorization tab owns the PKCE browser context and returns itself to
-  // the application as soon as the local decision reaches the portal.
+  // the application as soon as the portal records the explicit collection
+  // choice and consent.
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: /quick log/i })).toBeVisible();
   await page.screenshot({ path: "test-results/dogfood-connected-today.png", animations: "disabled" });
@@ -97,20 +78,20 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   expect(markdown).toContain("7");
 
   await connector(["access", "pause", "true"]);
-  const pausedStatus = await page.evaluate(async (connectUrl) => {
-    const key = Object.keys(localStorage).find((item) => item.includes(":token:"));
-    if (!key) throw new Error("Connected token was not stored.");
-    const token = JSON.parse(localStorage.getItem(key) || "{}");
-    const response = await fetch(`${connectUrl}/v1/collections/${token.collectionId}/operations/read`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token.accessToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ path: "exercises/squat.md" }),
-    });
-    return response.status;
-  }, serverUrl);
-  expect(pausedStatus).toBe(403);
-  await connector(["access", "pause", "false"]);
-
-  const activity = await connector(["activity", "--limit", "20"]);
-  expect(activity.some((entry: { operation: string; outcome: string }) => entry.operation === "read" && entry.outcome === "denied")).toBe(true);
+  try {
+    // The live Today view refreshes through the SDK. Pausing Connect must make
+    // that real collection query fail closed and leave an auditable denial.
+    await expect(
+      page.getByText("Application access denied: Remote access is paused on this computer."),
+    ).toBeVisible({ timeout: 20_000 });
+    await eventually(async () => {
+      const activity = await connector(["activity", "--limit", "20"]);
+      return activity.find(
+        (entry: { operation: string; outcome: string }) =>
+          entry.operation === "query" && entry.outcome === "denied",
+      ) ?? null;
+    }, "The paused SDK query was not recorded in Connect activity.");
+  } finally {
+    await connector(["access", "pause", "false"]);
+  }
 });
