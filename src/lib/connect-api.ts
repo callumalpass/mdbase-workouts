@@ -21,15 +21,15 @@ import type {
   MdbaseConnection,
   MdbaseOperationEnvelope,
   QueryInput,
+  QueryRecord,
   QueryResult,
-  RecordResult,
-  RecordSummary,
+  RecordDocument,
 } from "@mdbase/connect";
 import { activeConnection, connectionInfo } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
-type QueryRow = RecordSummary<JsonObject> & JsonObject;
+type QueryRow = QueryRecord<JsonObject> & JsonObject;
 
 const SOURCE_FRESH_MS = 30_000;
 const sourceCache = new Map<string, {
@@ -57,17 +57,17 @@ async function query(input: QueryInput): Promise<QueryResult> {
   return validResult(await requireConnection().query(input));
 }
 
-async function read(path: string): Promise<RecordResult> {
+async function read(path: string): Promise<RecordDocument<JsonObject>> {
   return validResult(await requireConnection().read({ path }));
 }
 
-async function create(input: Parameters<MdbaseConnection["create"]>[0]): Promise<RecordResult> {
+async function create(input: Parameters<MdbaseConnection["create"]>[0]): Promise<RecordDocument<JsonObject>> {
   const result = validResult(await requireConnection().create(input));
   invalidateConnectApiCache();
   return result;
 }
 
-async function update(path: string, patch: JsonObject): Promise<RecordResult> {
+async function update(path: string, patch: JsonObject): Promise<RecordDocument<JsonObject>> {
   const result = validResult(await requireConnection().update({ path, patch }));
   invalidateConnectApiCache();
   return result;
@@ -87,7 +87,7 @@ function record<T>(row: QueryRow): T {
   return { path: row.path, ...row.frontmatter } as T;
 }
 
-function operationRecord<T>(value: RecordResult, fallbackPath: string): T {
+function operationRecord<T>(value: RecordDocument<JsonObject>, fallbackPath: string): T {
   const frontmatter = value.frontmatter && typeof value.frontmatter === "object"
     ? value.frontmatter as Record<string, unknown>
     : {};

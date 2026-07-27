@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect, workoutOperations } from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
-import type { MdbaseConnection, MdbaseConnectionInfo } from "@mdbase/connect";
+import type {
+  JsonObject,
+  MdbaseConnection,
+  MdbaseConnectionInfo,
+  QueryRecord,
+  RecordDocument,
+} from "@mdbase/connect";
 
 const boundConnection = {
   info: vi.fn(),
@@ -12,6 +18,44 @@ const boundConnection = {
   delete: vi.fn(),
   describe: vi.fn(),
 } as unknown as MdbaseConnection;
+
+function queryRecord(
+  path: string,
+  frontmatter: JsonObject,
+  types: string[],
+): QueryRecord<JsonObject> & JsonObject {
+  const slash = path.lastIndexOf("/");
+  return {
+    path,
+    frontmatter,
+    effective_frontmatter: frontmatter,
+    types,
+    file: {
+      path,
+      name: path.slice(slash + 1),
+      folder: slash < 0 ? "" : path.slice(0, slash),
+      size: 100,
+      mtime: "2026-07-27T00:00:00.000Z",
+    },
+  } as QueryRecord<JsonObject> & JsonObject;
+}
+
+function recordDocument(
+  path: string,
+  frontmatter: JsonObject,
+  types: string[],
+): RecordDocument<JsonObject> {
+  const { file } = queryRecord(path, frontmatter, types);
+  return {
+    path,
+    revision: "revision-2",
+    frontmatter,
+    effective_frontmatter: frontmatter,
+    types,
+    body: "",
+    file,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,17 +85,17 @@ describe("Connect workout API", () => {
       valid: true,
       diagnostics: [],
       result: {
-        results: [{
-          path: "exercises/bench-press.md",
-          frontmatter: {
+        results: [queryRecord(
+          "exercises/bench-press.md",
+          {
             type: "exercise",
             name: "Bench Press",
             muscle_groups: ["chest"],
             equipment: "barbell",
             tracking: "weight_reps",
           },
-          types: ["exercise"],
-        }],
+          ["exercise"],
+        )],
         meta: { total_count: 1, has_more: false },
       },
     });
@@ -66,12 +110,11 @@ describe("Connect workout API", () => {
     const update = vi.spyOn(boundConnection, "update").mockResolvedValue({
       valid: true,
       diagnostics: [],
-      result: {
-        path: "exercises/bench-press.md",
-        revision: "revision-2",
-        frontmatter: { name: "Paused Bench Press" },
-        types: ["exercise"],
-      },
+      result: recordDocument(
+        "exercises/bench-press.md",
+        { name: "Paused Bench Press" },
+        ["exercise"],
+      ),
     });
 
     await connectApi.exercises.update("bench-press", { name: "Paused Bench Press" });
@@ -150,11 +193,11 @@ describe("Connect workout API", () => {
         valid: true,
         diagnostics: [],
         result: {
-          results: [{
-            path: "exercises/fresh.md",
-            frontmatter: { name: "Fresh" },
-            types: ["exercise"],
-          }],
+          results: [queryRecord(
+            "exercises/fresh.md",
+            { name: "Fresh" },
+            ["exercise"],
+          )],
           meta: { total_count: 1, has_more: false },
         },
       });
@@ -166,11 +209,11 @@ describe("Connect workout API", () => {
       valid: true,
       diagnostics: [],
       result: {
-        results: [{
-          path: "exercises/stale.md",
-          frontmatter: { name: "Stale" },
-          types: ["exercise"],
-        }],
+        results: [queryRecord(
+          "exercises/stale.md",
+          { name: "Stale" },
+          ["exercise"],
+        )],
         meta: { total_count: 1, has_more: false },
       },
     });
