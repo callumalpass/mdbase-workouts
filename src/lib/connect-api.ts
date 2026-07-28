@@ -25,7 +25,7 @@ import type {
   QueryResult,
   RecordDocument,
 } from "@mdbase/connect";
-import { activeConnection, connectionInfo } from "./connect";
+import { requireWorkoutConnection } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
@@ -54,12 +54,6 @@ const sourceCache = new Map<string, {
   pending?: Promise<QueryRow[]>;
 }>();
 
-function requireConnection() {
-  const connection = activeConnection();
-  if (!connection) throw new Error("Choose a workout collection before loading records.");
-  return connection;
-}
-
 function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result {
   if (!envelope.valid) {
     const diagnostic = envelope.diagnostics.find((item) => item.severity === "error") ?? envelope.diagnostics[0];
@@ -77,7 +71,7 @@ function contract(type: WorkoutType, provider?: string) {
 }
 
 async function createProvider(type: WorkoutType): Promise<string> {
-  const description = await requireConnection().describe();
+  const description = await requireWorkoutConnection().describe();
   const descriptor = description.contracts.find(
     (candidate) =>
       candidate.id === CONTRACTS[type] &&
@@ -97,7 +91,7 @@ async function createProvider(type: WorkoutType): Promise<string> {
 }
 
 async function query(input: QueryInput): Promise<QueryResult> {
-  return validResult(await requireConnection().query(input));
+  return validResult(await requireWorkoutConnection().query(input));
 }
 
 async function read(
@@ -105,7 +99,7 @@ async function read(
   path: string,
 ): Promise<RecordDocument<JsonObject>> {
   return validResult(
-    await requireConnection().read({ path, contract: contract(type) }),
+    await requireWorkoutConnection().read({ path, contract: contract(type) }),
   );
 }
 
@@ -115,7 +109,7 @@ async function create(
 ): Promise<RecordDocument<JsonObject>> {
   const provider = await createProvider(type);
   const result = validResult(
-    await requireConnection().create({
+    await requireWorkoutConnection().create({
       ...input,
       contract: contract(type, provider),
     }),
@@ -130,7 +124,7 @@ async function update(
   patch: JsonObject,
 ): Promise<RecordDocument<JsonObject>> {
   const result = validResult(
-    await requireConnection().update({
+    await requireWorkoutConnection().update({
       path,
       patch,
       contract: contract(type),
@@ -142,7 +136,7 @@ async function update(
 
 async function remove(type: WorkoutType, path: string): Promise<void> {
   validResult(
-    await requireConnection().delete({ path, contract: contract(type) }),
+    await requireWorkoutConnection().delete({ path, contract: contract(type) }),
   );
   invalidateConnectApiCache();
 }
@@ -199,7 +193,7 @@ async function rows(
   type: WorkoutType,
   extra: Pick<QueryInput, "limit" | "offset" | "frontmatter_mode"> = {},
 ): Promise<QueryRow[]> {
-  const collectionId = requireConnection().collectionId;
+  const collectionId = requireWorkoutConnection().collectionId;
   const key = `${type}:${JSON.stringify(extra)}`;
   const cached = sourceCache.get(key);
   if (cached?.collectionId === collectionId) {
@@ -443,9 +437,9 @@ export const connectApi = {
   },
   settings: {
     get: async () => {
-      const description = await requireConnection().describe();
+      const description = await requireWorkoutConnection().describe();
       return {
-        dataDir: connectionInfo()?.collectionId ?? "",
+        dataDir: requireWorkoutConnection().collectionId,
         configDataDir: "mdbase connect",
         collectionName: description.display_name,
       };

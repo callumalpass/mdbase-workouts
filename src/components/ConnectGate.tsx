@@ -1,21 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  clearAuthorizationCallback,
-  connect,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
+import {
   connectErrorMessage,
   connectIsRequired,
-  completeAuthorization,
-  connectionInfo,
-  activeConnection,
-  authorizationReturnTo,
-  isAuthorizationCallback,
-  onConnectionChange,
-  savedConnections,
-  selectConnection,
-  workoutOperations,
+  subscribeToWorkoutSession,
+  workoutSession,
+  workoutSnapshot,
 } from "../lib/connect";
-
-type GateState = "checking" | "disconnected" | "connecting" | "connected" | "error";
+import { invalidateConnectApiCache } from "../lib/connect-api";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -23,61 +19,69 @@ export default function ConnectGate({ children }: { children: ReactNode }) {
 }
 
 function RequiredConnectGate({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<GateState>(() => connectionInfo() ? "connected" : "checking");
+  const snapshot = useSyncExternalStore(
+    subscribeToWorkoutSession,
+    workoutSnapshot,
+  );
+  const [starting, setStarting] = useState(true);
+  const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
-  const completingCallback = useRef(false);
 
   useEffect(() => {
-    if (!isAuthorizationCallback(location.href)) {
-      if (connectionInfo()) {
-        setState("connected");
-        void activeConnection()?.checkDirectAccess();
-      } else {
-        setState("disconnected");
-      }
-      return;
-    }
-    if (completingCallback.current) return;
-    completingCallback.current = true;
-    setState("connecting");
-    completeAuthorization()
-      .then((connection) => {
-        setState("connected");
-        void connection.checkDirectAccess();
-      })
+    let active = true;
+    void workoutSession.start()
       .catch((reason: unknown) => {
-        completingCallback.current = false;
-        setError(connectErrorMessage(reason));
-        setState("error");
-        clearAuthorizationCallback();
+        if (active) setError(connectErrorMessage(reason));
+      })
+      .finally(() => {
+        if (active) setStarting(false);
       });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  useEffect(
-    () => onConnectionChange((connection) => {
-      if (!completingCallback.current) {
-        setState(connection ? "connected" : "disconnected");
-      }
-    }),
-    [],
-  );
+  if (snapshot.status === "ready") {
+    return (
+      <ConnectedCollection
+        key={snapshot.collectionId}
+        connection={snapshot.connection}
+      >
+        {children}
+      </ConnectedCollection>
+    );
+  }
 
-  if (state === "connected") return <>{children}</>;
-
-  async function beginConnection(collectionId?: string) {
-    setState("connecting");
+  async function beginConnection() {
+    setOpening(true);
     setError("");
     try {
-      await connect.authorize({
-        operations: workoutOperations,
-        collectionId,
-        returnTo: authorizationReturnTo(),
-      });
+      await workoutSession.authorize("choose");
     } catch (reason) {
       setError(connectErrorMessage(reason));
-      setState("error");
+      setOpening(false);
     }
   }
+
+  function openConnection(collectionId: string) {
+    setError("");
+    try {
+      invalidateConnectApiCache();
+      workoutSession.select(collectionId, { history: "replace" });
+    } catch (reason) {
+      setError(connectErrorMessage(reason));
+    }
+  }
+
+  const unavailableMessage = snapshot.status === "unavailable"
+    ? snapshot.reason === "invalid_stored_grant"
+      ? "This saved authorization is no longer compatible. Choose the collection again."
+      : snapshot.reason === "authorization_lost"
+        ? "Access to this collection was removed. Choose it again or open another collection."
+        : "This bookmarked collection is not authorized on this device."
+    : "";
+  const displayedError = error || unavailableMessage;
+  const busy = starting || opening;
 
   return (
     <main className="min-h-[100dvh] overflow-y-auto px-5 py-10 sm:py-16">
@@ -115,24 +119,20 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          {error && (
+          {displayedError && (
             <div role="alert" className="mb-4 border border-blush bg-paper px-3 py-2 text-sm text-blush">
-              {error}
+              {displayedError}
             </div>
           )}
 
-          {savedConnections().length ? (
+          {snapshot.connections.length ? (
             <div className="mb-4 border-y border-rule">
-              {savedConnections().map((connection) => (
+              {snapshot.connections.map((connection) => (
                 <button
                   key={connection.collectionId}
                   type="button"
                   className="flex w-full items-center justify-between gap-4 border-b border-rule px-3 py-3 text-left last:border-b-0 active:bg-paper"
-                  onClick={() => {
-                    selectConnection(connection.collectionId, true);
-                    setState("connected");
-                    void connect.connection(connection.collectionId)?.checkDirectAccess();
-                  }}
+                  onClick={() => openConnection(connection.collectionId)}
                 >
                   <span>
                     <strong className="block text-sm">{connection.displayName}</strong>
@@ -150,11 +150,17 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
 
           <button
             type="button"
-            disabled={state === "checking" || state === "connecting"}
+            disabled={busy}
             onClick={() => void beginConnection()}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening mdbase connect…" : savedConnections().length ? "Connect another collection" : "Choose workout collection"}
+            {starting
+              ? "Checking connection…"
+              : opening
+                ? "Opening mdbase connect…"
+                : snapshot.connections.length
+                  ? "Connect another collection"
+                  : "Choose workout collection"}
           </button>
           <p className="mt-3 text-center text-xs leading-5 text-faded">
             Local collections stay on your computer. Hosted collections remain available when it is offline.
@@ -163,4 +169,19 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
       </section>
     </main>
   );
+}
+
+function ConnectedCollection({
+  connection,
+  children,
+}: {
+  connection: ReturnType<typeof workoutSession.select>;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    invalidateConnectApiCache();
+    void connection.checkDirectAccess();
+    return () => invalidateConnectApiCache();
+  }, [connection]);
+  return <>{children}</>;
 }

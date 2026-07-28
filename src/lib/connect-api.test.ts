@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connect, workoutOperations } from "./connect";
+import {
+  workoutConnect,
+  workoutOperations,
+  workoutSession,
+} from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
 import type {
   JsonObject,
@@ -10,6 +14,13 @@ import type {
 } from "@mdbase/connect";
 
 const boundConnection = {
+  authorizationCapabilities: vi.fn(() => ({
+    authorized: true,
+    sufficient: true,
+    grantedOperations: workoutOperations,
+    missingOperations: [],
+  })),
+  onConnectionChange: vi.fn(() => () => undefined),
   info: vi.fn(),
   query: vi.fn(),
   read: vi.fn(),
@@ -82,8 +93,9 @@ beforeEach(() => {
     value: info.collectionId,
   });
   vi.spyOn(boundConnection, "info").mockReturnValue(info);
-  vi.spyOn(connect, "connections").mockReturnValue([info]);
-  vi.spyOn(connect, "connection").mockReturnValue(boundConnection);
+  vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
+  vi.spyOn(workoutConnect, "connection").mockReturnValue(boundConnection);
+  workoutSession.select(info.collectionId, { history: "replace" });
   vi.spyOn(boundConnection, "describe").mockResolvedValue({
     protocol_version: 1,
     collection_id: "workouts-test",
@@ -102,7 +114,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  workoutSession.clearSelection({ history: "replace" });
+  vi.restoreAllMocks();
+});
 
 describe("Connect workout API", () => {
   it("unwraps query envelopes into workout records", async () => {

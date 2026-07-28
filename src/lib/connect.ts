@@ -1,10 +1,10 @@
 import {
-  MdbaseBrowserLocation,
+  MdbaseBrowserSelection,
   MdbaseConnect,
   MdbaseConnectError,
   type MdbaseConnection,
-  type MdbaseConnectionInfo,
   type MdbaseOperation,
+  type MdbaseSessionSnapshot,
 } from "@mdbase/connect";
 
 const environment = (import.meta as ImportMeta & {
@@ -13,15 +13,6 @@ const environment = (import.meta as ImportMeta & {
 const serverUrl = String(environment.VITE_MDBASE_CONNECT_URL || "https://connect.mdbase.dev");
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
 const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
-
-export const connect = new MdbaseConnect({
-  serverUrl,
-  manifest,
-  redirectUri: appRoot.href,
-});
-const connectLocation = new MdbaseBrowserLocation(connect, {
-  fallbackPath: appRoot.pathname,
-});
 
 export const workoutOperations: MdbaseOperation[] = [
   "describe",
@@ -32,50 +23,42 @@ export const workoutOperations: MdbaseOperation[] = [
   "delete",
 ];
 
-export function savedConnections(): MdbaseConnectionInfo[] {
-  return connect.connections();
+export const workoutConnect = new MdbaseConnect({
+  serverUrl,
+  manifest,
+  redirectUri: appRoot.href,
+});
+
+export const workoutSession = workoutConnect.createSession({
+  operations: workoutOperations,
+  selection: new MdbaseBrowserSelection({
+    fallbackPath: appRoot.pathname,
+  }),
+});
+
+export function workoutSnapshot(): MdbaseSessionSnapshot {
+  return workoutSession.getSnapshot();
 }
 
-export function activeConnection(): MdbaseConnection | null {
-  return connectLocation.activeConnection();
+export function subscribeToWorkoutSession(listener: () => void): () => void {
+  return workoutSession.subscribe(listener);
 }
 
-export function connectionInfo(): MdbaseConnectionInfo | null {
-  return activeConnection()?.info() ?? null;
+export function workoutConnection(): MdbaseConnection | null {
+  const snapshot = workoutSnapshot();
+  return snapshot.status === "ready" ? snapshot.connection : null;
 }
 
-export function selectConnection(collectionId: string, replace = false): void {
-  connectLocation.selectConnection(collectionId, { replace });
-}
-
-export function authorizationReturnTo(): string {
-  return connectLocation.authorizationReturnTo();
-}
-
-export function completeAuthorization(): Promise<MdbaseConnection> {
-  return connectLocation.completeAuthorization();
+export function requireWorkoutConnection(): MdbaseConnection {
+  const connection = workoutConnection();
+  if (!connection) {
+    throw new Error("Choose a workout collection before loading records.");
+  }
+  return connection;
 }
 
 export function connectIsRequired(): boolean {
   return environment.PROD === true || environment.VITE_MDBASE_CONNECT === "1";
-}
-
-export function clearAuthorizationCallback(): void {
-  connectLocation.clearAuthorizationCallback();
-}
-
-export function isAuthorizationCallback(value: string): boolean {
-  return connectLocation.isAuthorizationCallback(value);
-}
-
-export function selectedCollectionId(): string | null {
-  return connectLocation.selectedCollectionId();
-}
-
-export function onConnectionChange(
-  listener: (connection: MdbaseConnection | null) => void,
-): () => void {
-  return connectLocation.onChange(({ connection }) => listener(connection));
 }
 
 export function connectErrorMessage(error: unknown): string {
@@ -85,6 +68,7 @@ export function connectErrorMessage(error: unknown): string {
       return "This connection has expired. Choose the collection again.";
     }
     if (error.code === "insufficient_access") return "This connection does not include the access Workouts needs.";
+    if (error.code === "unknown_collection") return "That collection is no longer authorized on this device.";
   }
   if (error instanceof Error) return error.message;
   return "The workout collection could not be reached.";
