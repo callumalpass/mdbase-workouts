@@ -1,15 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { api } from "../lib/api";
 import {
-  activeConnection,
-  authorizationReturnTo,
-  connect,
-  connectionInfo,
-  onConnectionChange,
-  savedConnections,
-  selectConnection,
-  workoutOperations,
+  subscribeToWorkoutSession,
+  workoutSession,
+  workoutSnapshot,
 } from "../lib/connect";
+import { invalidateConnectApiCache } from "../lib/connect-api";
 import { clearWorkoutCache } from "../lib/workout-cache";
 
 interface Props {
@@ -18,7 +14,12 @@ interface Props {
 }
 
 export default function SettingsSheet({ open, onClose }: Props) {
-  const [connected, setConnected] = useState(() => connectionInfo());
+  const snapshot = useSyncExternalStore(
+    subscribeToWorkoutSession,
+    workoutSnapshot,
+  );
+  const connected = snapshot.status === "ready" ? snapshot.info : null;
+  const connection = snapshot.status === "ready" ? snapshot.connection : null;
   const [dataDir, setDataDir] = useState("");
   const [resolvedDir, setResolvedDir] = useState("");
   const [originalDir, setOriginalDir] = useState("");
@@ -28,14 +29,9 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const [directBusy, setDirectBusy] = useState(false);
   const connectedCollectionId = connected?.collectionId;
 
-  useEffect(
-    () => onConnectionChange(() => setConnected(connectionInfo())),
-    [],
-  );
-
   useEffect(() => {
     if (open) {
-      if (connectedCollectionId) void activeConnection()?.checkDirectAccess();
+      if (connectedCollectionId) void connection?.checkDirectAccess();
       api.settings.get().then((s) => {
         setDataDir(s.configDataDir);
         setOriginalDir(s.configDataDir);
@@ -46,7 +42,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
         setError(err instanceof Error ? err.message : "Failed to load collection settings");
       });
     }
-  }, [connectedCollectionId, open]);
+  }, [connectedCollectionId, connection, open]);
 
   if (!open) return null;
 
@@ -56,8 +52,11 @@ export default function SettingsSheet({ open, onClose }: Props) {
     setSaving(true);
     setError("");
     try {
-      await api.settings.update({ dataDir: dataDir.trim() });
-      window.location.reload();
+      const updated = await api.settings.update({ dataDir: dataDir.trim() });
+      setDataDir(updated.configDataDir);
+      setOriginalDir(updated.configDataDir);
+      setResolvedDir(updated.dataDir);
+      setCollectionName(updated.collectionName || "");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update";
       setError(message);
@@ -70,7 +69,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
     setDirectBusy(true);
     setError("");
     try {
-      const status = await activeConnection()?.requestDirectAccess();
+      const status = await connection?.requestDirectAccess();
       if (status === "denied") {
         setError("Local network access is blocked in this browser.");
       } else if (status === "unavailable") {
@@ -134,22 +133,26 @@ export default function SettingsSheet({ open, onClose }: Props) {
               type="button"
               onClick={() => {
                 clearWorkoutCache(connected.collectionId);
-                activeConnection()?.forget();
-                window.location.reload();
+                invalidateConnectApiCache();
+                workoutSession.forget(connected.collectionId);
+                onClose();
               }}
               className="mt-4 border border-rule px-3 py-2 text-xs text-faded active:bg-paper"
             >
               Disconnect collection
             </button>
-            {savedConnections().filter(
+            {snapshot.connections.filter(
               (connection) => connection.collectionId !== connected.collectionId,
             ).map((connection) => (
               <button
                 key={connection.collectionId}
                 type="button"
                 onClick={() => {
-                  selectConnection(connection.collectionId, true);
-                  window.location.reload();
+                  invalidateConnectApiCache();
+                  workoutSession.select(connection.collectionId, {
+                    history: "replace",
+                  });
+                  onClose();
                 }}
                 className="mt-2 block w-full border border-rule px-3 py-2 text-left text-xs text-faded active:bg-paper"
               >
@@ -158,10 +161,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
             ))}
             <button
               type="button"
-              onClick={() => void connect.authorize({
-                operations: workoutOperations,
-                returnTo: authorizationReturnTo(),
-              })}
+              onClick={() => void workoutSession.authorize("choose")}
               className="mt-2 block w-full border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper"
             >
               Connect another collection

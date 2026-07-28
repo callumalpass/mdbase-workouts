@@ -1,4 +1,4 @@
-import { connectionInfo } from "./connect";
+import { workoutSnapshot } from "./connect";
 
 const CACHE_PREFIX = "mdbase-workouts:cache:v1:";
 const MAX_ENTRY_BYTES = 350_000;
@@ -14,8 +14,13 @@ export interface WorkoutCacheEntry<T> extends StoredCacheEntry<T> {}
 const inFlight = new Map<string, Promise<unknown>>();
 const generations = new Map<string, number>();
 
-function scope(collectionId = connectionInfo()?.collectionId ?? "local"): string {
+function scope(collectionId = selectedCollectionId()): string {
   return encodeURIComponent(collectionId);
+}
+
+function selectedCollectionId(): string {
+  const snapshot = workoutSnapshot();
+  return snapshot.status === "ready" ? snapshot.collectionId : "local";
 }
 
 function cachePrefix(collectionId?: string): string {

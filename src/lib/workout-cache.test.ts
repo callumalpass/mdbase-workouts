@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MdbaseConnectionInfo } from "@mdbase/connect";
-import { connect } from "./connect";
+import { workoutConnect, workoutSession } from "./connect";
 import {
   clearWorkoutCache,
   loadWorkoutCache,
@@ -17,11 +17,19 @@ function useCollection(collectionId: string) {
     route: "relay",
     directAccess: "permission_required",
   };
-  vi.spyOn(connect, "connections").mockReturnValue([info]);
-  vi.spyOn(connect, "connection").mockReturnValue({
+  vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
+  vi.spyOn(workoutConnect, "connection").mockReturnValue({
     collectionId,
+    authorizationCapabilities: () => ({
+      authorized: true,
+      sufficient: true,
+      grantedOperations: [],
+      missingOperations: [],
+    }),
     info: () => info,
+    onConnectionChange: () => () => undefined,
   } as never);
+  workoutSession.select(collectionId, { history: "replace" });
 }
 
 describe("workout cache", () => {

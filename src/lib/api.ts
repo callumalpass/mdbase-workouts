@@ -17,7 +17,7 @@ import type {
   TodayData,
   WeeklyStatsResponse,
 } from "./types";
-import { connectionInfo } from "./connect";
+import { workoutSnapshot } from "./connect";
 import { connectApi } from "./connect-api";
 import { clearWorkoutCache } from "./workout-cache";
 
@@ -110,7 +110,7 @@ const localApi = {
 
 export const api = new Proxy(localApi, {
   get(target, property, receiver) {
-    const backend = connectionInfo() ? connectApi : target;
+    const backend = workoutSnapshot().status === "ready" ? connectApi : target;
     return Reflect.get(backend, property, receiver);
   },
 }) as typeof localApi;
