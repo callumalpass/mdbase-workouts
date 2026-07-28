@@ -11,7 +11,6 @@ import {
   isAuthorizationCallback,
   onConnectionChange,
   savedConnections,
-  selectedCollectionId,
   selectConnection,
   workoutOperations,
 } from "../lib/connect";
@@ -152,9 +151,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           <button
             type="button"
             disabled={state === "checking" || state === "connecting"}
-            onClick={() => void beginConnection(
-              selectedCollectionId() ?? undefined,
-            )}
+            onClick={() => void beginConnection()}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
             {state === "checking" ? "Checking connection…" : state === "connecting" ? "Opening mdbase connect…" : savedConnections().length ? "Connect another collection" : "Choose workout collection"}
