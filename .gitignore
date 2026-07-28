@@ -6,5 +6,7 @@ dist/
 test-results/
 playwright-report/
 data/*
+!data/_contracts/
+!data/_contracts/**
 !data/_types/
 /.ops/

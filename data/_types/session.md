@@ -77,9 +77,16 @@ collection:
     plan:
       target_type: any
       validate_exists: false
-x-mdbase-workouts:
-  contract: mdbase.workouts.session
-  version: 1
+implements:
+  - contract: mdbase.workouts.session
+    version: 1.0.0
+    fields:
+      date: date
+      exercises: exercises
+      duration_minutes: duration_minutes
+      plan: plan
+      rating: rating
+      notes: notes
 ---
 
 

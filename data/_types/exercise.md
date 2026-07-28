@@ -49,9 +49,14 @@ schema:
 collection:
   read_defaults:
     tracking: weight_reps
-x-mdbase-workouts:
-  contract: mdbase.workouts.exercise
-  version: 1
+implements:
+  - contract: mdbase.workouts.exercise
+    version: 1.0.0
+    fields:
+      name: name
+      muscle_groups: muscle_groups
+      equipment: equipment
+      tracking: tracking
 x-legacy-v0.2:
   fields:
     fields.name.min_length: 1

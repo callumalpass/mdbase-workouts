@@ -227,7 +227,11 @@ In production (`NODE_ENV=production`), the backend serves static files from `dis
 
 ## mdbase connect and GitHub Pages
 
-Production browser builds connect through `https://connect.mdbase.dev`. The application manifest is generated at `public/.well-known/mdbase-app.json` and requests access only to the five workout record contracts. The OAuth callback returns to the application root, which keeps authorization compatible with the GitHub Pages subpath.
+Production browser builds connect through `https://connect.mdbase.dev`. The application manifest is generated at `public/.well-known/mdbase-app.json` and requests contract-scoped access to five exact `1.0.0` workout data contracts. The OAuth callback returns to the application root, which keeps authorization compatible with the GitHub Pages subpath.
+
+The manifest also publishes one transactional `mdbase.workouts` type pack. During authorization, Connect can install its five contracts and five default implementing types atomically. Workouts queries each contract rather than assuming those local type names: reads union every approved implementation and return the same normalized JSON fields. Creates send an exact provider selector, preferring the app's default implementation when it is present, so collections with several implementations remain unambiguous.
+
+Contract-scoped access deliberately excludes Markdown bodies, unmapped frontmatter, saved views, and collection-wide queries. Sorting and filtering therefore happen over normalized contract results in the app. Users can authorize Workouts without exposing unrelated notes or implementation-specific fields.
 
 The browser keeps its authorization in local storage. On the same computer as the local connector, Settings can enable direct access so reads avoid the relay and the encrypted local grant remains usable after the relay login expires. The UI also keeps small, collection-scoped snapshots of Today, stats, exercises, and the first history page. These snapshots are cleared after writes and on disconnect, and are refreshed from mdbase in the background.
 
@@ -252,6 +256,7 @@ The GitHub Actions workflow typechecks, runs unit and browser tests, builds the 
 - `npm run typecheck` - run frontend and backend TypeScript checks
 - `npm run lint` - alias for `npm run typecheck`
 - `npm test` - run Vitest
+- `npm run test:manifest` - validate the Connect manifest and install its type pack into a disposable collection
 - `npm run test:watch` - run Vitest in watch mode
 - `npm run test:e2e` - run Playwright tests
 - `npm run screenshots` - capture mobile screenshots to `docs/screenshots/`

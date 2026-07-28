@@ -57,9 +57,13 @@ collection:
     exercises[].exercise:
       target_type: any
       validate_exists: false
-x-mdbase-workouts:
-  contract: mdbase.workouts.plan-template
-  version: 1
+implements:
+  - contract: mdbase.workouts.plan-template
+    version: 1.0.0
+    fields:
+      title: title
+      exercises: exercises
+      notes: notes
 ---
 
 
