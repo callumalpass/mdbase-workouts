@@ -10,7 +10,8 @@
     "build": "npm run manifest && vite build",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
     "lint": "npm run typecheck",
-    "test": "vitest run",
+    "test": "npm run manifest && vitest run && npm run test:manifest",
+    "test:manifest": "node scripts/verify-manifest.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:connect": "playwright test --config playwright.dogfood.config.ts",
@@ -20,10 +21,10 @@
     "start": "NODE_ENV=production tsx server/index.ts"
   },
   "dependencies": {
-    "@callumalpass/mdbase": "0.3.0-rc.1",
-    "@mdbase/connect": "file:vendor/mdbase-connect-0.1.0-beta.8-c3a44aa7063a.tgz",
-    "@mdbase/connect-protocol": "file:vendor/mdbase-connect-protocol-0.1.0-beta.8-c3a44aa7063a.tgz",
-    "@hono/node-server": "^1.19.14",
+    "@callumalpass/mdbase": "file:vendor/callumalpass-mdbase-0.3.0-rc.2.tgz",
+    "@hono/node-server": "^2.0.12",
+    "@mdbase/connect": "file:vendor/mdbase-connect-0.1.0-beta.9.tgz",
+    "@mdbase/connect-protocol": "file:vendor/mdbase-connect-protocol-0.1.0-beta.9.tgz",
     "hono": "^4.12.30",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -36,6 +37,8 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.0",
     "jsdom": "^28.0.0",

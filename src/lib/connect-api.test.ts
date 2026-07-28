@@ -64,7 +64,16 @@ beforeEach(() => {
     collectionId: "workouts-test",
     displayName: "Test workouts",
     operations: workoutOperations,
-    scope: { contracts: [], access: "full_collection" },
+    scope: {
+      contracts: [
+        contractDescriptor("exercise"),
+        contractDescriptor("plan"),
+        contractDescriptor("plan-template"),
+        contractDescriptor("quick-log"),
+        contractDescriptor("session"),
+      ],
+      access: "contract",
+    },
     route: "relay",
     directAccess: "permission_required",
   };
@@ -75,6 +84,22 @@ beforeEach(() => {
   vi.spyOn(boundConnection, "info").mockReturnValue(info);
   vi.spyOn(connect, "connections").mockReturnValue([info]);
   vi.spyOn(connect, "connection").mockReturnValue(boundConnection);
+  vi.spyOn(boundConnection, "describe").mockResolvedValue({
+    protocol_version: 1,
+    collection_id: "workouts-test",
+    display_name: "Test workouts",
+    spec_version: "0.3.0",
+    operations: workoutOperations,
+    change_cursor: 0,
+    types: [],
+    contracts: [
+      contractDescriptor("exercise"),
+      contractDescriptor("plan"),
+      contractDescriptor("plan-template"),
+      contractDescriptor("quick-log"),
+      contractDescriptor("session"),
+    ],
+  });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -104,6 +129,13 @@ describe("Connect workout API", () => {
       path: "exercises/bench-press.md",
       name: "Bench Press",
     })]);
+    expect(boundConnection.query).toHaveBeenCalledWith({
+      contract: {
+        id: "mdbase.workouts.exercise",
+        version: "1.0.0",
+      },
+      limit: 20000,
+    });
   });
 
   it("uses the canonical patch input for updates", async () => {
@@ -122,6 +154,60 @@ describe("Connect workout API", () => {
     expect(update).toHaveBeenCalledWith({
       path: "exercises/bench-press.md",
       patch: { name: "Paused Bench Press" },
+      contract: {
+        id: "mdbase.workouts.exercise",
+        version: "1.0.0",
+      },
+    });
+  });
+
+  it("selects one exact provider when creating into a contract with several implementations", async () => {
+    vi.spyOn(boundConnection, "describe").mockResolvedValue({
+      protocol_version: 1,
+      collection_id: "workouts-test",
+      display_name: "Test workouts",
+      spec_version: "0.3.0",
+      operations: workoutOperations,
+      change_cursor: 0,
+      types: [],
+      contracts: [{
+        ...contractDescriptor("exercise"),
+        implementations: [
+          implementation("strength-exercise"),
+          implementation("exercise"),
+        ],
+      }],
+    });
+    const create = vi.spyOn(boundConnection, "create").mockResolvedValue({
+      valid: true,
+      diagnostics: [],
+      result: recordDocument(
+        "exercises/bench-press.md",
+        { name: "Bench Press" },
+        ["exercise"],
+      ),
+    });
+
+    await connectApi.exercises.create({
+      name: "Bench Press",
+      muscle_groups: ["chest"],
+      equipment: "barbell",
+      tracking: "weight_reps",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      path: "exercises/bench-press.md",
+      frontmatter: {
+        name: "Bench Press",
+        muscle_groups: ["chest"],
+        equipment: "barbell",
+        tracking: "weight_reps",
+      },
+      contract: {
+        id: "mdbase.workouts.exercise",
+        version: "1.0.0",
+        type: "exercise",
+      },
     });
   });
 
@@ -155,14 +241,14 @@ describe("Connect workout API", () => {
     ]);
 
     expect(query).toHaveBeenCalledTimes(3);
-    expect(query.mock.calls.map(([input]) => input?.types?.[0]).sort()).toEqual([
-      "exercise",
-      "quick-log",
-      "session",
+    expect(query.mock.calls.map(([input]) => input?.contract?.id).sort()).toEqual([
+      "mdbase.workouts.exercise",
+      "mdbase.workouts.quick-log",
+      "mdbase.workouts.session",
     ]);
   });
 
-  it("keeps a cold Today startup to seven collection operations", async () => {
+  it("keeps a cold Today startup to five contract queries", async () => {
     const query = vi.spyOn(boundConnection, "query").mockResolvedValue({
       valid: true,
       diagnostics: [],
@@ -179,7 +265,18 @@ describe("Connect workout API", () => {
       connectApi.stats.weekly("Australia/Melbourne"),
     ]);
 
-    expect(query).toHaveBeenCalledTimes(7);
+    expect(query).toHaveBeenCalledTimes(5);
+    expect(
+      new Set(query.mock.calls.map(([input]) => input?.contract?.id)),
+    ).toEqual(
+      new Set([
+        "mdbase.workouts.exercise",
+        "mdbase.workouts.plan",
+        "mdbase.workouts.plan-template",
+        "mdbase.workouts.quick-log",
+        "mdbase.workouts.session",
+      ]),
+    );
   });
 
   it("does not let an invalidated source request replace fresh rows", async () => {
@@ -224,3 +321,22 @@ describe("Connect workout API", () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 });
+
+function implementation(typeName: string) {
+  return {
+    type_name: typeName,
+    type_version: 1,
+    digest: `sha256:${typeName}`,
+    fields: {},
+  };
+}
+
+function contractDescriptor(type: string) {
+  return {
+    id: `mdbase.workouts.${type}`,
+    version: "1.0.0",
+    digest: `sha256:${type}`,
+    schema: {},
+    implementations: [implementation(type)],
+  };
+}

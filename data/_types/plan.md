@@ -80,9 +80,16 @@ collection:
     session:
       target_type: any
       validate_exists: false
-x-mdbase-workouts:
-  contract: mdbase.workouts.plan
-  version: 1
+implements:
+  - contract: mdbase.workouts.plan
+    version: 1.0.0
+    fields:
+      date: date
+      title: title
+      exercises: exercises
+      status: status
+      session: session
+      notes: notes
 ---
 
 

@@ -30,6 +30,21 @@ import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats"
 import { clearWorkoutCache } from "./workout-cache";
 
 type QueryRow = QueryRecord<JsonObject> & JsonObject;
+type WorkoutType =
+  | "exercise"
+  | "plan"
+  | "plan-template"
+  | "quick-log"
+  | "session";
+
+const CONTRACT_VERSION = "1.0.0";
+const CONTRACTS: Record<WorkoutType, string> = {
+  exercise: "mdbase.workouts.exercise",
+  plan: "mdbase.workouts.plan",
+  "plan-template": "mdbase.workouts.plan-template",
+  "quick-log": "mdbase.workouts.quick-log",
+  session: "mdbase.workouts.session",
+};
 
 const SOURCE_FRESH_MS = 30_000;
 const sourceCache = new Map<string, {
@@ -53,28 +68,82 @@ function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result 
   return envelope.result;
 }
 
+function contract(type: WorkoutType, provider?: string) {
+  return {
+    id: CONTRACTS[type],
+    version: CONTRACT_VERSION,
+    ...(provider ? { type: provider } : {}),
+  };
+}
+
+async function createProvider(type: WorkoutType): Promise<string> {
+  const description = await requireConnection().describe();
+  const descriptor = description.contracts.find(
+    (candidate) =>
+      candidate.id === CONTRACTS[type] &&
+      candidate.version === CONTRACT_VERSION,
+  );
+  if (!descriptor?.implementations.length) {
+    throw new Error(
+      `This collection does not implement ${CONTRACTS[type]} ${CONTRACT_VERSION}.`,
+    );
+  }
+  const providers = [...descriptor.implementations].sort((left, right) =>
+    left.type_name.localeCompare(right.type_name)
+  );
+  return (
+    providers.find((provider) => provider.type_name === type) ?? providers[0]
+  ).type_name;
+}
+
 async function query(input: QueryInput): Promise<QueryResult> {
   return validResult(await requireConnection().query(input));
 }
 
-async function read(path: string): Promise<RecordDocument<JsonObject>> {
-  return validResult(await requireConnection().read({ path }));
+async function read(
+  type: WorkoutType,
+  path: string,
+): Promise<RecordDocument<JsonObject>> {
+  return validResult(
+    await requireConnection().read({ path, contract: contract(type) }),
+  );
 }
 
-async function create(input: Parameters<MdbaseConnection["create"]>[0]): Promise<RecordDocument<JsonObject>> {
-  const result = validResult(await requireConnection().create(input));
+async function create(
+  type: WorkoutType,
+  input: Omit<Parameters<MdbaseConnection["create"]>[0], "type" | "contract">,
+): Promise<RecordDocument<JsonObject>> {
+  const provider = await createProvider(type);
+  const result = validResult(
+    await requireConnection().create({
+      ...input,
+      contract: contract(type, provider),
+    }),
+  );
   invalidateConnectApiCache();
   return result;
 }
 
-async function update(path: string, patch: JsonObject): Promise<RecordDocument<JsonObject>> {
-  const result = validResult(await requireConnection().update({ path, patch }));
+async function update(
+  type: WorkoutType,
+  path: string,
+  patch: JsonObject,
+): Promise<RecordDocument<JsonObject>> {
+  const result = validResult(
+    await requireConnection().update({
+      path,
+      patch,
+      contract: contract(type),
+    }),
+  );
   invalidateConnectApiCache();
   return result;
 }
 
-async function remove(path: string): Promise<void> {
-  validResult(await requireConnection().delete({ path }));
+async function remove(type: WorkoutType, path: string): Promise<void> {
+  validResult(
+    await requireConnection().delete({ path, contract: contract(type) }),
+  );
   invalidateConnectApiCache();
 }
 
@@ -126,7 +195,10 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-async function rows(type: string, extra: QueryInput = {}): Promise<QueryRow[]> {
+async function rows(
+  type: WorkoutType,
+  extra: Pick<QueryInput, "limit" | "offset" | "frontmatter_mode"> = {},
+): Promise<QueryRow[]> {
   const collectionId = requireConnection().collectionId;
   const key = `${type}:${JSON.stringify(extra)}`;
   const cached = sourceCache.get(key);
@@ -141,7 +213,7 @@ async function rows(type: string, extra: QueryInput = {}): Promise<QueryRow[]> {
     collectionId: string;
     pending: Promise<QueryRow[]>;
   };
-  const pending = query({ types: [type], include_body: false, ...extra })
+  const pending = query({ contract: contract(type), ...extra })
     .then((result) => result.results ?? [])
     .then((value) => {
       if (sourceCache.get(key) === entry) {
@@ -158,14 +230,29 @@ async function rows(type: string, extra: QueryInput = {}): Promise<QueryRow[]> {
   return pending;
 }
 
-const allExerciseRows = () => rows("exercise", { order_by: [{ field: "name", direction: "asc" }] });
-const allSessionRows = () => rows("session", { order_by: [{ field: "date", direction: "desc" }], limit: 20000 });
-const allQuickLogRows = () => rows("quick-log", { order_by: [{ field: "logged_at", direction: "desc" }], limit: 20000 });
-const allTemplateRows = () => rows("plan-template");
+const allExerciseRows = async () =>
+  [...(await rows("exercise", { limit: 20000 }))].sort((left, right) =>
+    String(left.frontmatter?.name ?? "").localeCompare(
+      String(right.frontmatter?.name ?? ""),
+    ),
+  );
+const allSessionRows = async () =>
+  [...(await rows("session", { limit: 20000 }))].sort((left, right) =>
+    String(right.frontmatter?.date ?? "").localeCompare(
+      String(left.frontmatter?.date ?? ""),
+    ),
+  );
+const allQuickLogRows = async () =>
+  [...(await rows("quick-log", { limit: 20000 }))].sort((left, right) =>
+    String(right.frontmatter?.logged_at ?? "").localeCompare(
+      String(left.frontmatter?.logged_at ?? ""),
+    ),
+  );
+const allTemplateRows = () => rows("plan-template", { limit: 20000 });
 
 async function exerciseHistory(slug: string): Promise<ExerciseHistory> {
   const [exerciseValue, sessionRows, quickLogRows] = await Promise.all([
-    read(`exercises/${slug}.md`),
+    read("exercise", `exercises/${slug}.md`),
     allSessionRows(),
     allQuickLogRows(),
   ]);
@@ -246,13 +333,13 @@ async function weeklyStats(timeZone?: string): Promise<WeeklyStatsResponse> {
 export const connectApi = {
   exercises: {
     list: async () => (await allExerciseRows()).map((row) => record<Exercise>(row)),
-    get: async (slug: string) => operationRecord<Exercise>(await read(`exercises/${slug}.md`), `exercises/${slug}.md`),
+    get: async (slug: string) => operationRecord<Exercise>(await read("exercise", `exercises/${slug}.md`), `exercises/${slug}.md`),
     history: exerciseHistory,
     create: async (data: CreateExerciseInput) => {
       const path = `exercises/${slugify(data.name)}.md`;
-      return operationRecord<Exercise>(await create({ path, type: "exercise", frontmatter: { ...data } }), path);
+      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }), path);
     },
-    update: async (slug: string, data: Partial<CreateExerciseInput>) => operationRecord<Exercise>(await update(`exercises/${slug}.md`, data), `exercises/${slug}.md`),
+    update: async (slug: string, data: Partial<CreateExerciseInput>) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data), `exercises/${slug}.md`),
     lastSets: async (slugs: string[]) => {
       const sessionRows = await allSessionRows();
       const remaining = new Set(slugs);
@@ -272,21 +359,21 @@ export const connectApi = {
     },
   },
   quickLogs: {
-    list: async (limit = 50) => (await rows("quick-log", { order_by: [{ field: "logged_at", direction: "desc" }], limit })).map((row) => record<QuickLog>(row)),
+    list: async (limit = 50) => (await allQuickLogRows()).slice(0, limit).map((row) => record<QuickLog>(row)),
     create: async (data: CreateQuickLogInput) => {
       const now = new Date();
       const path = `quick-logs/${timestamp(now)}.md`;
       const frontmatter = { ...data, exercise: wikilink("exercises", data.exercise), logged_at: now.toISOString() };
-      return operationRecord<QuickLog>(await create({ path, type: "quick-log", frontmatter }), path);
+      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }), path);
     },
   },
   sessions: {
     list: async (limit = 20, offset = 0) => {
-      const result = await query({ types: ["session"], order_by: [{ field: "date", direction: "desc" }], limit, offset, include_body: false });
-      const sessions = (result.results ?? []).map((row) => record<Session>(row));
-      return { sessions, total: result.meta?.total_count ?? sessions.length, hasMore: result.meta?.has_more ?? false };
+      const all = await allSessionRows();
+      const sessions = all.slice(offset, offset + limit).map((row) => record<Session>(row));
+      return { sessions, total: all.length, hasMore: offset + sessions.length < all.length };
     },
-    get: async (id: string) => operationRecord<Session>(await read(`sessions/${id}.md`), `sessions/${id}.md`),
+    get: async (id: string) => operationRecord<Session>(await read("session", `sessions/${id}.md`), `sessions/${id}.md`),
     create: async (data: CreateSessionInput) => {
       const now = new Date();
       const id = timestamp(now);
@@ -297,19 +384,21 @@ export const connectApi = {
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
         ...(data.plan ? { plan: wikilink("plans", data.plan) } : {}),
       };
-      const session = operationRecord<Session>(await create({ path, type: "session", frontmatter }), path);
-      if (data.plan) await update(`plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) });
+      const session = operationRecord<Session>(await create("session", { path, frontmatter }), path);
+      if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) });
       return session;
     },
-    update: async (id: string, data: Partial<Session>) => operationRecord<Session>(await update(`sessions/${id}.md`, data), `sessions/${id}.md`),
-    delete: async (id: string) => { await remove(`sessions/${id}.md`); return { ok: true }; },
+    update: async (id: string, data: Partial<Session>) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data), `sessions/${id}.md`),
+    delete: async (id: string) => { await remove("session", `sessions/${id}.md`); return { ok: true }; },
   },
   plans: {
-    list: async (status?: string) => (await rows("plan", {
-      ...(status ? { where: `status == "${status}"` } : {}),
-      order_by: [{ field: "date", direction: "desc" }],
-    })).map((row) => record<Plan>(row)),
-    get: async (id: string) => operationRecord<Plan>(await read(`plans/${id}.md`), `plans/${id}.md`),
+    list: async (status?: string) => {
+      const plans = [...(await rows("plan", { limit: 20000 }))]
+        .map((row) => record<Plan>(row))
+        .filter((plan) => !status || plan.status === status);
+      return plans.sort((left, right) => right.date.localeCompare(left.date));
+    },
+    get: async (id: string) => operationRecord<Plan>(await read("plan", `plans/${id}.md`), `plans/${id}.md`),
     create: async (data: CreatePlanInput) => {
       const date = data.date || dateKey(new Date());
       const id = `${date}-${slugify(data.title)}`;
@@ -320,33 +409,33 @@ export const connectApi = {
         status: "scheduled",
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
       };
-      return operationRecord<Plan>(await create({ path, type: "plan", frontmatter }), path);
+      return operationRecord<Plan>(await create("plan", { path, frontmatter }), path);
     },
-    update: async (id: string, data: Partial<Plan>) => operationRecord<Plan>(await update(`plans/${id}.md`, data), `plans/${id}.md`),
+    update: async (id: string, data: Partial<Plan>) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data), `plans/${id}.md`),
   },
   planTemplates: {
     list: async () => (await allTemplateRows()).map((row) => record<PlanTemplate>(row)),
-    get: async (id: string) => operationRecord<PlanTemplate>(await read(`plan-templates/${id}.md`), `plan-templates/${id}.md`),
+    get: async (id: string) => operationRecord<PlanTemplate>(await read("plan-template", `plan-templates/${id}.md`), `plan-templates/${id}.md`),
     create: async (data: CreatePlanTemplateInput) => {
       const path = `plan-templates/${slugify(data.title)}.md`;
       const frontmatter = { ...data, exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })) };
-      return operationRecord<PlanTemplate>(await create({ path, type: "plan-template", frontmatter }), path);
+      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }), path);
     },
-    update: async (id: string, data: Partial<PlanTemplate>) => operationRecord<PlanTemplate>(await update(`plan-templates/${id}.md`, data), `plan-templates/${id}.md`),
-    delete: async (id: string) => { await remove(`plan-templates/${id}.md`); return { ok: true }; },
+    update: async (id: string, data: Partial<PlanTemplate>) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data), `plan-templates/${id}.md`),
+    delete: async (id: string) => { await remove("plan-template", `plan-templates/${id}.md`); return { ok: true }; },
   },
   stats: { get: stats, weekly: weeklyStats },
   today: async (timeZone?: string) => {
     const today = dateKey(new Date(), timeZone);
     const [planRows, sessionRows, quickLogRows, templateRows] = await Promise.all([
-      rows("plan", { where: `date == "${today}"`, order_by: [{ field: "date", direction: "asc" }] }),
-      rows("session", { order_by: [{ field: "date", direction: "desc" }], limit: 250 }),
-      rows("quick-log", { order_by: [{ field: "logged_at", direction: "desc" }], limit: 250 }),
+      rows("plan", { limit: 20000 }),
+      rows("session", { limit: 20000 }),
+      rows("quick-log", { limit: 20000 }),
       allTemplateRows(),
     ]);
     return {
       date: today,
-      plans: planRows.map((row) => record<Plan>(row)),
+      plans: planRows.map((row) => record<Plan>(row)).filter((plan) => plan.date === today),
       sessions: sessionRows.map((row) => record<Session>(row)).filter((session) => dateKey(session.date, timeZone) === today),
       quickLogs: quickLogRows.map((row) => record<QuickLog>(row)).filter((log) => dateKey(log.logged_at, timeZone) === today),
       templates: templateRows.map((row) => record<PlanTemplate>(row)),

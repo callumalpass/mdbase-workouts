@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -15,12 +16,38 @@ const requiredTypes = [
   { name: "quick-log", contract: "mdbase.workouts.quick-log" },
   { name: "session", contract: "mdbase.workouts.session" },
 ];
-const provisions = await Promise.all(requiredTypes.map(async ({ name, contract }) => ({
-  name,
-  path: `_types/${name}.md`,
-  document: await readFile(resolve(projectRoot, "data", "_types", `${name}.md`), "utf8"),
-  provides: [{ id: contract, version: 1 }],
-})));
+const packResources = (
+  await Promise.all(
+    requiredTypes.map(async ({ name, contract }) => {
+      const contractSource = `contracts/${contract}.md`;
+      const typeSource = `types/${name}.md`;
+      const contractDocument = await readFile(
+        resolve(projectRoot, "data", "_contracts", `${contract}.md`),
+        "utf8",
+      );
+      const typeDocument = await readFile(
+        resolve(projectRoot, "data", "_types", `${name}.md`),
+        "utf8",
+      );
+      return [
+        {
+          kind: "contract",
+          source: contractSource,
+          target: `_contracts/${contract}.md`,
+          digest: digest(contractDocument),
+          document: contractDocument,
+        },
+        {
+          kind: "type",
+          source: typeSource,
+          target: `_types/${name}.md`,
+          digest: digest(typeDocument),
+          document: typeDocument,
+        },
+      ];
+    }),
+  )
+).flat();
 
 await mkdir(resolve(target, ".."), { recursive: true });
 await writeFile(target, `${JSON.stringify({
@@ -30,12 +57,42 @@ await writeFile(target, `${JSON.stringify({
   homepage: appUrl,
   redirect_uris: [appUrl],
   requirements: {
-    contracts: requiredTypes.map(({ contract }) => ({ id: contract, version: 1 })),
+    access: "contract",
+    contracts: requiredTypes.map(({ contract }) => ({
+      id: contract,
+      version: "1.0.0",
+    })),
   },
   provisions: {
-    types: provisions,
+    type_packs: [
+      {
+        provides: requiredTypes.map(({ contract }) => ({
+          id: contract,
+          version: "1.0.0",
+        })),
+        manifest: {
+          kind: "mdbase.type-pack",
+          id: "mdbase.workouts",
+          version: "1.0.0",
+          name: "mdbase Workouts",
+          description:
+            "Portable workout contracts and the app's default implementations.",
+          resources: packResources.map(({ document: _document, ...resource }) =>
+            resource
+          ),
+        },
+        resources: packResources.map(({ source, document }) => ({
+          source,
+          document,
+        })),
+      },
+    ],
   },
 }, null, 2)}\n`);
+
+function digest(document) {
+  return `sha256:${createHash("sha256").update(document).digest("hex")}`;
+}
 
 function normalizeBasePath(value) {
   return `/${value.replace(/^\/+|\/+$/g, "")}/`.replace(/^\/\/$/, "/");

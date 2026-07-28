@@ -7,83 +7,164 @@
     "https://callumalpass.github.io/mdbase-workouts/"
   ],
   "requirements": {
+    "access": "contract",
     "contracts": [
       {
         "id": "mdbase.workouts.exercise",
-        "version": 1
+        "version": "1.0.0"
       },
       {
         "id": "mdbase.workouts.plan",
-        "version": 1
+        "version": "1.0.0"
       },
       {
         "id": "mdbase.workouts.plan-template",
-        "version": 1
+        "version": "1.0.0"
       },
       {
         "id": "mdbase.workouts.quick-log",
-        "version": 1
+        "version": "1.0.0"
       },
       {
         "id": "mdbase.workouts.session",
-        "version": 1
+        "version": "1.0.0"
       }
     ]
   },
   "provisions": {
-    "types": [
+    "type_packs": [
       {
-        "name": "exercise",
-        "path": "_types/exercise.md",
-        "document": "---\nkind: mdbase.type\nname: exercise\nversion: 1\ndescription: An exercise definition with tracking configuration\nmatch:\n  path_glob: exercises/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: exercise\n      name:\n        type: string\n        description: Display name of the exercise (e.g. \"Bench Press\", \"Pull-Up\").\n      muscle_groups:\n        type: array\n        items:\n          type: string\n        description: Primary muscle groups targeted (e.g. \"chest\", \"quads\", \"lats\").\n      equipment:\n        enum:\n          - barbell\n          - dumbbell\n          - bodyweight\n          - cable\n          - machine\n          - kettlebell\n          - band\n          - none\n        description: The type of equipment required for this exercise.\n      tracking:\n        enum:\n          - weight_reps\n          - reps_only\n          - timed\n          - distance\n        description: >-\n          How this exercise is tracked. Determines which fields are relevant in session sets —\n          \"weight_reps\" uses weight+reps, \"reps_only\" uses reps, \"timed\" uses duration_seconds,\n          \"distance\" uses distance.\n        default: weight_reps\n    required:\n      - name\ncollection:\n  read_defaults:\n    tracking: weight_reps\nx-mdbase-workouts:\n  contract: mdbase.workouts.exercise\n  version: 1\nx-legacy-v0.2:\n  fields:\n    fields.name.min_length: 1\n---\n\n\n## Exercise\n\nAn exercise definition describes **what** an exercise is and **how** it should be tracked. These are referenced by plans and sessions via links.\n\nThe `tracking` field controls which set fields are relevant when logging this exercise:\n- **weight_reps**: log `weight` and `reps` per set (e.g. bench press, squat)\n- **reps_only**: log `reps` only (e.g. push-ups, pull-ups)\n- **timed**: log `duration_seconds` (e.g. plank, wall sit)\n- **distance**: log `distance` (e.g. running, cycling)\n",
         "provides": [
           {
             "id": "mdbase.workouts.exercise",
-            "version": 1
-          }
-        ]
-      },
-      {
-        "name": "plan",
-        "path": "_types/plan.md",
-        "document": "---\nkind: mdbase.type\nname: plan\nversion: 1\ndescription: A scheduled workout plan\nmatch:\n  path_glob: plans/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: plan\n      date:\n        type: string\n        description: >-\n          The intended date for this workout (YYYY-MM-DD). This is NOT the creation date — it is the\n          date the workout is scheduled/planned for.\n      title:\n        type: string\n        description: Short descriptive title for the workout (e.g. \"Full Body\", \"Push Day\").\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: >-\n                Target reps per set. Can be a number-like string (\"8\"), range (\"10-12\"), or\n                descriptor (\"AMRAP\").\n            target_weight:\n              type: number\n              description: Target weight in kg.\n            notes:\n              type: string\n              description: Per-exercise notes (e.g. \"go slow on eccentric\").\n        description: Ordered list of exercises planned for this workout, with optional targets.\n      status:\n        enum:\n          - scheduled\n          - completed\n          - skipped\n        description: >-\n          Current status of this plan. Starts as \"scheduled\", set to \"completed\" once a session is\n          recorded or \"skipped\" if the workout was missed.\n        default: scheduled\n      session:\n        type: string\n        description: >-\n          Link to the session record created when this plan was executed. Empty until the workout is\n          done.\n      notes:\n        type: string\n        description: General notes about the plan (e.g. goals, how you're feeling, modifications).\n    required:\n      - date\n      - title\ncollection:\n  display:\n    name_field: title\n  read_defaults:\n    status: scheduled\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\n    session:\n      target_type: any\n      validate_exists: false\nx-mdbase-workouts:\n  contract: mdbase.workouts.plan\n  version: 1\n---\n\n\n## Plan\n\nA plan represents a **scheduled workout** for a specific future (or today's) date. The `date` field is the date the workout is intended for, not when the plan file was created.\n\nWhen a plan is executed, a corresponding **session** record should be created and linked back via the `session` field, and the plan's `status` should be set to `completed`.\n",
-        "provides": [
+            "version": "1.0.0"
+          },
           {
             "id": "mdbase.workouts.plan",
-            "version": 1
-          }
-        ]
-      },
-      {
-        "name": "plan-template",
-        "path": "_types/plan-template.md",
-        "document": "---\nkind: mdbase.type\nname: plan-template\nversion: 1\ndescription: A reusable workout template for quick-starting sessions\nmatch:\n  path_glob: plan-templates/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: plan-template\n      title:\n        type: string\n        description: Short descriptive title for this template (e.g. \"Minimum Session\", \"Bench Day\").\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: >-\n                Target reps per set. Can be a number (\"8\"), range (\"10-12\"), or descriptor\n                (\"AMRAP\").\n            target_weight:\n              type: number\n              description: >-\n                Target weight in kg. When absent, the session logger pre-fills from last-used\n                weight.\n            notes:\n              type: string\n              description: Per-exercise notes (e.g. \"go slow on eccentric\").\n        description: Ordered list of exercises in this template, with optional targets.\n      notes:\n        type: string\n        description: General notes about this template.\n    required:\n      - title\ncollection:\n  display:\n    name_field: title\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\nx-mdbase-workouts:\n  contract: mdbase.workouts.plan-template\n  version: 1\n---\n\n\n## Plan Template\n\nA plan template is a **reusable workout blueprint** that appears on the Today tab as a quick-start button. Tapping \"Start\" opens the session logger directly — no date scheduling or intermediate plan creation.\n\nSessions logged from templates are standalone (no plan link). Weight pre-fill uses the `lastUsed` localStorage mechanism when `target_weight` is omitted.\n",
-        "provides": [
+            "version": "1.0.0"
+          },
           {
             "id": "mdbase.workouts.plan-template",
-            "version": 1
-          }
-        ]
-      },
-      {
-        "name": "quick-log",
-        "path": "_types/quick-log.md",
-        "document": "---\nkind: mdbase.type\nname: quick-log\nversion: 1\ndescription: A quick single-exercise log entry\nmatch:\n  path_glob: quick-logs/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: quick-log\n      exercise:\n        type: string\n        description: Link to the exercise definition in data/exercises/.\n      reps:\n        type: number\n        description: Number of reps performed (for weight_reps or reps_only exercises).\n      weight:\n        type: number\n        description: Weight used in kg (for weight_reps exercises).\n      duration_seconds:\n        type: number\n        description: Duration in seconds (for timed exercises).\n      distance:\n        type: number\n        description: Distance covered (for distance exercises).\n      logged_at:\n        type: string\n        description: >-\n          ISO 8601 timestamp of when this was logged (e.g. \"2026-02-06T10:48:15\"). This is the\n          moment the exercise was performed/recorded.\n      notes:\n        type: string\n        description: Optional notes about this log entry.\n    required:\n      - exercise\ncollection:\n  links:\n    exercise:\n      target_type: any\n      validate_exists: false\nx-mdbase-workouts:\n  contract: mdbase.workouts.quick-log\n  version: 1\n---\n\n\n## Quick Log\n\nA quick log is a lightweight way to record a **single exercise** without creating a full session. Useful for tracking one-off sets (e.g. \"just did 20 push-ups\") outside of a structured workout.\n\nOnly fill in the fields relevant to the exercise's `tracking` type — e.g. don't set `weight` for a bodyweight-only exercise.\n\nThe filename should use the format `YYYYMMDDTHHmmss.md` based on when the exercise was logged.\n",
-        "provides": [
+            "version": "1.0.0"
+          },
           {
             "id": "mdbase.workouts.quick-log",
-            "version": 1
-          }
-        ]
-      },
-      {
-        "name": "session",
-        "path": "_types/session.md",
-        "document": "---\nkind: mdbase.type\nname: session\nversion: 1\ndescription: A completed workout session\nmatch:\n  path_glob: sessions/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: session\n      date:\n        type: string\n        description: >-\n          The date this workout was performed (YYYY-MM-DD). This is the actual date the session took\n          place, not the creation timestamp of the file.\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            sets:\n              type: array\n              items:\n                type: object\n                additionalProperties: false\n                properties:\n                  reps:\n                    type: number\n                    description: Number of reps completed in this set.\n                  weight:\n                    type: number\n                    description: Weight used in kg.\n                  duration_seconds:\n                    type: number\n                    description: Duration in seconds (for timed exercises like planks).\n                  distance:\n                    type: number\n                    description: Distance covered (for distance exercises like running).\n                  notes:\n                    type: string\n                    description: Notes for this specific set (e.g. \"failed on last rep\").\n              description: Each set performed for this exercise, in order.\n        description: List of exercises performed with their actual sets/reps/weights.\n      duration_minutes:\n        type: number\n        description: Total duration of the session in minutes, from warm-up to finish.\n      plan:\n        type: string\n        description: >-\n          Link to the plan that this session was based on, if any. Leave empty for unplanned/ad-hoc\n          sessions.\n      rating:\n        type: number\n        description: Subjective session rating from 1 (terrible) to 5 (great).\n        minimum: 1\n        maximum: 5\n      notes:\n        type: string\n        description: General notes about how the session went (e.g. energy level, injuries, PRs).\n    required:\n      - date\ncollection:\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\n    plan:\n      target_type: any\n      validate_exists: false\nx-mdbase-workouts:\n  contract: mdbase.workouts.session\n  version: 1\n---\n\n\n## Session\n\nA session records a **completed workout** — what was actually performed. The `date` field is the date the workout happened (YYYY-MM-DD), not a file creation timestamp.\n\nSessions may be linked to a **plan** (if the workout was pre-planned) or standalone (for ad-hoc workouts). Each exercise entry contains the actual sets performed with real weights/reps/durations.\n\nThe filename should use the format `YYYYMMDDTHHmmss.md` based on when the session started.\n",
-        "provides": [
+            "version": "1.0.0"
+          },
           {
             "id": "mdbase.workouts.session",
-            "version": 1
+            "version": "1.0.0"
+          }
+        ],
+        "manifest": {
+          "kind": "mdbase.type-pack",
+          "id": "mdbase.workouts",
+          "version": "1.0.0",
+          "name": "mdbase Workouts",
+          "description": "Portable workout contracts and the app's default implementations.",
+          "resources": [
+            {
+              "kind": "contract",
+              "source": "contracts/mdbase.workouts.exercise.md",
+              "target": "_contracts/mdbase.workouts.exercise.md",
+              "digest": "sha256:31d93bd44fc6a7feefd9cf1bc3b75eda71c878205ca5d940f248910e916f2257"
+            },
+            {
+              "kind": "type",
+              "source": "types/exercise.md",
+              "target": "_types/exercise.md",
+              "digest": "sha256:3333d9caf342e2625012fd26dcdb48eee02add881c386cca9fdea205852fcc22"
+            },
+            {
+              "kind": "contract",
+              "source": "contracts/mdbase.workouts.plan.md",
+              "target": "_contracts/mdbase.workouts.plan.md",
+              "digest": "sha256:944635cf685439670aa83500bbce75ea9317bfffb0a6831bf81cc871d69ca533"
+            },
+            {
+              "kind": "type",
+              "source": "types/plan.md",
+              "target": "_types/plan.md",
+              "digest": "sha256:99d1d3515c4d8074594da0fce29fe6c1a2ba241b33ff6f0c95933b4a6a2a45b5"
+            },
+            {
+              "kind": "contract",
+              "source": "contracts/mdbase.workouts.plan-template.md",
+              "target": "_contracts/mdbase.workouts.plan-template.md",
+              "digest": "sha256:bc5add3641b31c5d3324a1debe1f640a87fd1c8f3647896089a32770f81043b0"
+            },
+            {
+              "kind": "type",
+              "source": "types/plan-template.md",
+              "target": "_types/plan-template.md",
+              "digest": "sha256:1c9155471755047cfa6c8176b3ef723f5ac2ae905fae78fb01a3864423ccc672"
+            },
+            {
+              "kind": "contract",
+              "source": "contracts/mdbase.workouts.quick-log.md",
+              "target": "_contracts/mdbase.workouts.quick-log.md",
+              "digest": "sha256:afa7a56de3f079c399706fa6ce1a31f4953570c413b75f07ac73ced1a725e38e"
+            },
+            {
+              "kind": "type",
+              "source": "types/quick-log.md",
+              "target": "_types/quick-log.md",
+              "digest": "sha256:8f685a1566586961285dfecfc0e00bbb7a44345f6ef13084e979dc9f827aaacb"
+            },
+            {
+              "kind": "contract",
+              "source": "contracts/mdbase.workouts.session.md",
+              "target": "_contracts/mdbase.workouts.session.md",
+              "digest": "sha256:412be758ed6c96a86ce714fe469b8fc1dfce6261aa98da9d533bb727c5193b15"
+            },
+            {
+              "kind": "type",
+              "source": "types/session.md",
+              "target": "_types/session.md",
+              "digest": "sha256:941225eacc7f7f4a3658e4b50841b58c7478d2cb9b129e2f77ded55dab566c80"
+            }
+          ]
+        },
+        "resources": [
+          {
+            "source": "contracts/mdbase.workouts.exercise.md",
+            "document": "---\nkind: mdbase.contract\nid: mdbase.workouts.exercise\nversion: 1.0.0\nname: Workout exercise\ndescription: A portable exercise definition and its tracking mode.\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: false\n    properties:\n      name:\n        type: string\n        description: Display name of the exercise.\n      muscle_groups:\n        type: array\n        items:\n          type: string\n        description: Primary muscle groups targeted by the exercise.\n      equipment:\n        enum:\n          - barbell\n          - dumbbell\n          - bodyweight\n          - cable\n          - machine\n          - kettlebell\n          - band\n          - none\n        description: Equipment required for the exercise.\n      tracking:\n        enum:\n          - weight_reps\n          - reps_only\n          - timed\n          - distance\n        default: weight_reps\n        description: Measurement mode used when logging the exercise.\n    required:\n      - name\n---\n\n# Workout exercise\n\nApplications use this contract to share exercise definitions without depending\non a collection's type name or frontmatter field names.\n"
+          },
+          {
+            "source": "types/exercise.md",
+            "document": "---\nkind: mdbase.type\nname: exercise\nversion: 1\ndescription: An exercise definition with tracking configuration\nmatch:\n  path_glob: exercises/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: exercise\n      name:\n        type: string\n        description: Display name of the exercise (e.g. \"Bench Press\", \"Pull-Up\").\n      muscle_groups:\n        type: array\n        items:\n          type: string\n        description: Primary muscle groups targeted (e.g. \"chest\", \"quads\", \"lats\").\n      equipment:\n        enum:\n          - barbell\n          - dumbbell\n          - bodyweight\n          - cable\n          - machine\n          - kettlebell\n          - band\n          - none\n        description: The type of equipment required for this exercise.\n      tracking:\n        enum:\n          - weight_reps\n          - reps_only\n          - timed\n          - distance\n        description: >-\n          How this exercise is tracked. Determines which fields are relevant in session sets —\n          \"weight_reps\" uses weight+reps, \"reps_only\" uses reps, \"timed\" uses duration_seconds,\n          \"distance\" uses distance.\n        default: weight_reps\n    required:\n      - name\ncollection:\n  read_defaults:\n    tracking: weight_reps\nimplements:\n  - contract: mdbase.workouts.exercise\n    version: 1.0.0\n    fields:\n      name: name\n      muscle_groups: muscle_groups\n      equipment: equipment\n      tracking: tracking\nx-legacy-v0.2:\n  fields:\n    fields.name.min_length: 1\n---\n\n\n## Exercise\n\nAn exercise definition describes **what** an exercise is and **how** it should be tracked. These are referenced by plans and sessions via links.\n\nThe `tracking` field controls which set fields are relevant when logging this exercise:\n- **weight_reps**: log `weight` and `reps` per set (e.g. bench press, squat)\n- **reps_only**: log `reps` only (e.g. push-ups, pull-ups)\n- **timed**: log `duration_seconds` (e.g. plank, wall sit)\n- **distance**: log `distance` (e.g. running, cycling)\n"
+          },
+          {
+            "source": "contracts/mdbase.workouts.plan.md",
+            "document": "---\nkind: mdbase.contract\nid: mdbase.workouts.plan\nversion: 1.0.0\nname: Workout plan\ndescription: A scheduled workout and its intended exercises.\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: false\n    properties:\n      date:\n        type: string\n        description: Intended workout date in YYYY-MM-DD form.\n      title:\n        type: string\n        description: Short descriptive title for the workout.\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: Target repetitions, range, or descriptor.\n            target_weight:\n              type: number\n              description: Target weight in kilograms.\n            notes:\n              type: string\n              description: Per-exercise notes.\n        description: Ordered exercises planned for the workout.\n      status:\n        enum:\n          - scheduled\n          - completed\n          - skipped\n        default: scheduled\n        description: Current state of the plan.\n      session:\n        type: string\n        description: Link to the resulting workout session, when available.\n      notes:\n        type: string\n        description: General notes about the plan.\n    required:\n      - date\n      - title\n---\n\n# Workout plan\n\nThis contract is the portable view of a scheduled workout.\n"
+          },
+          {
+            "source": "types/plan.md",
+            "document": "---\nkind: mdbase.type\nname: plan\nversion: 1\ndescription: A scheduled workout plan\nmatch:\n  path_glob: plans/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: plan\n      date:\n        type: string\n        description: >-\n          The intended date for this workout (YYYY-MM-DD). This is NOT the creation date — it is the\n          date the workout is scheduled/planned for.\n      title:\n        type: string\n        description: Short descriptive title for the workout (e.g. \"Full Body\", \"Push Day\").\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: >-\n                Target reps per set. Can be a number-like string (\"8\"), range (\"10-12\"), or\n                descriptor (\"AMRAP\").\n            target_weight:\n              type: number\n              description: Target weight in kg.\n            notes:\n              type: string\n              description: Per-exercise notes (e.g. \"go slow on eccentric\").\n        description: Ordered list of exercises planned for this workout, with optional targets.\n      status:\n        enum:\n          - scheduled\n          - completed\n          - skipped\n        description: >-\n          Current status of this plan. Starts as \"scheduled\", set to \"completed\" once a session is\n          recorded or \"skipped\" if the workout was missed.\n        default: scheduled\n      session:\n        type: string\n        description: >-\n          Link to the session record created when this plan was executed. Empty until the workout is\n          done.\n      notes:\n        type: string\n        description: General notes about the plan (e.g. goals, how you're feeling, modifications).\n    required:\n      - date\n      - title\ncollection:\n  display:\n    name_field: title\n  read_defaults:\n    status: scheduled\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\n    session:\n      target_type: any\n      validate_exists: false\nimplements:\n  - contract: mdbase.workouts.plan\n    version: 1.0.0\n    fields:\n      date: date\n      title: title\n      exercises: exercises\n      status: status\n      session: session\n      notes: notes\n---\n\n\n## Plan\n\nA plan represents a **scheduled workout** for a specific future (or today's) date. The `date` field is the date the workout is intended for, not when the plan file was created.\n\nWhen a plan is executed, a corresponding **session** record should be created and linked back via the `session` field, and the plan's `status` should be set to `completed`.\n"
+          },
+          {
+            "source": "contracts/mdbase.workouts.plan-template.md",
+            "document": "---\nkind: mdbase.contract\nid: mdbase.workouts.plan-template\nversion: 1.0.0\nname: Workout plan template\ndescription: A reusable workout blueprint.\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: false\n    properties:\n      title:\n        type: string\n        description: Short descriptive title for the template.\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: Target repetitions, range, or descriptor.\n            target_weight:\n              type: number\n              description: Target weight in kilograms.\n            notes:\n              type: string\n              description: Per-exercise notes.\n        description: Ordered exercises in the template.\n      notes:\n        type: string\n        description: General notes about the template.\n    required:\n      - title\n---\n\n# Workout plan template\n\nThis contract lets workout applications share reusable session blueprints.\n"
+          },
+          {
+            "source": "types/plan-template.md",
+            "document": "---\nkind: mdbase.type\nname: plan-template\nversion: 1\ndescription: A reusable workout template for quick-starting sessions\nmatch:\n  path_glob: plan-templates/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: plan-template\n      title:\n        type: string\n        description: Short descriptive title for this template (e.g. \"Minimum Session\", \"Bench Day\").\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            target_sets:\n              type: number\n              description: Number of sets to aim for.\n            target_reps:\n              oneOf:\n                - type: string\n                - type: number\n              description: >-\n                Target reps per set. Can be a number (\"8\"), range (\"10-12\"), or descriptor\n                (\"AMRAP\").\n            target_weight:\n              type: number\n              description: >-\n                Target weight in kg. When absent, the session logger pre-fills from last-used\n                weight.\n            notes:\n              type: string\n              description: Per-exercise notes (e.g. \"go slow on eccentric\").\n        description: Ordered list of exercises in this template, with optional targets.\n      notes:\n        type: string\n        description: General notes about this template.\n    required:\n      - title\ncollection:\n  display:\n    name_field: title\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\nimplements:\n  - contract: mdbase.workouts.plan-template\n    version: 1.0.0\n    fields:\n      title: title\n      exercises: exercises\n      notes: notes\n---\n\n\n## Plan Template\n\nA plan template is a **reusable workout blueprint** that appears on the Today tab as a quick-start button. Tapping \"Start\" opens the session logger directly — no date scheduling or intermediate plan creation.\n\nSessions logged from templates are standalone (no plan link). Weight pre-fill uses the `lastUsed` localStorage mechanism when `target_weight` is omitted.\n"
+          },
+          {
+            "source": "contracts/mdbase.workouts.quick-log.md",
+            "document": "---\nkind: mdbase.contract\nid: mdbase.workouts.quick-log\nversion: 1.0.0\nname: Workout quick log\ndescription: A lightweight record of one performed exercise.\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: false\n    properties:\n      exercise:\n        type: string\n        description: Link to the performed exercise.\n      reps:\n        type: number\n        description: Repetitions performed.\n      weight:\n        type: number\n        description: Weight used in kilograms.\n      duration_seconds:\n        type: number\n        description: Duration in seconds.\n      distance:\n        type: number\n        description: Distance covered.\n      logged_at:\n        type: string\n        description: ISO 8601 timestamp for the activity.\n      notes:\n        type: string\n        description: Optional notes about the activity.\n    required:\n      - exercise\n---\n\n# Workout quick log\n\nThis contract represents a single exercise logged outside a full session.\n"
+          },
+          {
+            "source": "types/quick-log.md",
+            "document": "---\nkind: mdbase.type\nname: quick-log\nversion: 1\ndescription: A quick single-exercise log entry\nmatch:\n  path_glob: quick-logs/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: quick-log\n      exercise:\n        type: string\n        description: Link to the exercise definition in data/exercises/.\n      reps:\n        type: number\n        description: Number of reps performed (for weight_reps or reps_only exercises).\n      weight:\n        type: number\n        description: Weight used in kg (for weight_reps exercises).\n      duration_seconds:\n        type: number\n        description: Duration in seconds (for timed exercises).\n      distance:\n        type: number\n        description: Distance covered (for distance exercises).\n      logged_at:\n        type: string\n        description: >-\n          ISO 8601 timestamp of when this was logged (e.g. \"2026-02-06T10:48:15\"). This is the\n          moment the exercise was performed/recorded.\n      notes:\n        type: string\n        description: Optional notes about this log entry.\n    required:\n      - exercise\ncollection:\n  links:\n    exercise:\n      target_type: any\n      validate_exists: false\nimplements:\n  - contract: mdbase.workouts.quick-log\n    version: 1.0.0\n    fields:\n      exercise: exercise\n      reps: reps\n      weight: weight\n      duration_seconds: duration_seconds\n      distance: distance\n      logged_at: logged_at\n      notes: notes\n---\n\n\n## Quick Log\n\nA quick log is a lightweight way to record a **single exercise** without creating a full session. Useful for tracking one-off sets (e.g. \"just did 20 push-ups\") outside of a structured workout.\n\nOnly fill in the fields relevant to the exercise's `tracking` type — e.g. don't set `weight` for a bodyweight-only exercise.\n\nThe filename should use the format `YYYYMMDDTHHmmss.md` based on when the exercise was logged.\n"
+          },
+          {
+            "source": "contracts/mdbase.workouts.session.md",
+            "document": "---\nkind: mdbase.contract\nid: mdbase.workouts.session\nversion: 1.0.0\nname: Workout session\ndescription: A completed workout and its performed sets.\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: false\n    properties:\n      date:\n        type: string\n        description: Date on which the workout was performed.\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to the performed exercise.\n            sets:\n              type: array\n              items:\n                type: object\n                additionalProperties: false\n                properties:\n                  reps:\n                    type: number\n                    description: Repetitions completed in this set.\n                  weight:\n                    type: number\n                    description: Weight used in kilograms.\n                  duration_seconds:\n                    type: number\n                    description: Duration in seconds.\n                  distance:\n                    type: number\n                    description: Distance covered.\n                  notes:\n                    type: string\n                    description: Notes for this set.\n              description: Sets performed for the exercise.\n        description: Exercises and sets performed in the workout.\n      duration_minutes:\n        type: number\n        description: Total duration of the session in minutes.\n      plan:\n        type: string\n        description: Link to the originating plan, when present.\n      rating:\n        type: number\n        minimum: 1\n        maximum: 5\n        description: Subjective session rating from one to five.\n      notes:\n        type: string\n        description: General notes about the session.\n    required:\n      - date\n---\n\n# Workout session\n\nThis contract is the portable view of a completed workout.\n"
+          },
+          {
+            "source": "types/session.md",
+            "document": "---\nkind: mdbase.type\nname: session\nversion: 1\ndescription: A completed workout session\nmatch:\n  path_glob: sessions/**\nschema:\n  dialect: json-schema-2020-12\n  value:\n    $schema: https://json-schema.org/draft/2020-12/schema\n    type: object\n    additionalProperties: true\n    properties:\n      type:\n        const: session\n      date:\n        type: string\n        description: >-\n          The date this workout was performed (YYYY-MM-DD). This is the actual date the session took\n          place, not the creation timestamp of the file.\n      exercises:\n        type: array\n        items:\n          type: object\n          additionalProperties: false\n          properties:\n            exercise:\n              type: string\n              description: Link to an exercise definition in data/exercises/.\n            sets:\n              type: array\n              items:\n                type: object\n                additionalProperties: false\n                properties:\n                  reps:\n                    type: number\n                    description: Number of reps completed in this set.\n                  weight:\n                    type: number\n                    description: Weight used in kg.\n                  duration_seconds:\n                    type: number\n                    description: Duration in seconds (for timed exercises like planks).\n                  distance:\n                    type: number\n                    description: Distance covered (for distance exercises like running).\n                  notes:\n                    type: string\n                    description: Notes for this specific set (e.g. \"failed on last rep\").\n              description: Each set performed for this exercise, in order.\n        description: List of exercises performed with their actual sets/reps/weights.\n      duration_minutes:\n        type: number\n        description: Total duration of the session in minutes, from warm-up to finish.\n      plan:\n        type: string\n        description: >-\n          Link to the plan that this session was based on, if any. Leave empty for unplanned/ad-hoc\n          sessions.\n      rating:\n        type: number\n        description: Subjective session rating from 1 (terrible) to 5 (great).\n        minimum: 1\n        maximum: 5\n      notes:\n        type: string\n        description: General notes about how the session went (e.g. energy level, injuries, PRs).\n    required:\n      - date\ncollection:\n  links:\n    exercises[].exercise:\n      target_type: any\n      validate_exists: false\n    plan:\n      target_type: any\n      validate_exists: false\nimplements:\n  - contract: mdbase.workouts.session\n    version: 1.0.0\n    fields:\n      date: date\n      exercises: exercises\n      duration_minutes: duration_minutes\n      plan: plan\n      rating: rating\n      notes: notes\n---\n\n\n## Session\n\nA session records a **completed workout** — what was actually performed. The `date` field is the date the workout happened (YYYY-MM-DD), not a file creation timestamp.\n\nSessions may be linked to a **plan** (if the workout was pre-planned) or standalone (for ad-hoc workouts). Each exercise entry contains the actual sets performed with real weights/reps/durations.\n\nThe filename should use the format `YYYYMMDDTHHmmss.md` based on when the session started.\n"
           }
         ]
       }

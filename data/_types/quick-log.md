@@ -44,9 +44,17 @@ collection:
     exercise:
       target_type: any
       validate_exists: false
-x-mdbase-workouts:
-  contract: mdbase.workouts.quick-log
-  version: 1
+implements:
+  - contract: mdbase.workouts.quick-log
+    version: 1.0.0
+    fields:
+      exercise: exercise
+      reps: reps
+      weight: weight
+      duration_seconds: duration_seconds
+      distance: distance
+      logged_at: logged_at
+      notes: notes
 ---
 
 
