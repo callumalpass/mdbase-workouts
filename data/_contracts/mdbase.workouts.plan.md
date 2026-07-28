@@ -1,10 +1,11 @@
 ---
 kind: mdbase.contract
+contract_type: record
 id: mdbase.workouts.plan
 version: 1.0.0
 name: Workout plan
 description: A scheduled workout and its intended exercises.
-schema:
+record_schema:
   dialect: json-schema-2020-12
   value:
     $schema: https://json-schema.org/draft/2020-12/schema

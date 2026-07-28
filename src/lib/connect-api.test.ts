@@ -334,6 +334,7 @@ function implementation(typeName: string) {
 function contractDescriptor(type: string) {
   return {
     id: `mdbase.workouts.${type}`,
+    contract_type: "record" as const,
     version: "1.0.0",
     digest: `sha256:${type}`,
     schema: {},
