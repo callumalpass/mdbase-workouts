@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MdbaseConnectionInfo } from "@mdbase/connect";
+import type { MdbaseConnectionInfo } from "@mdbase-dev/connect";
 import { workoutConnect, workoutSession } from "./connect";
 import {
   clearWorkoutCache,

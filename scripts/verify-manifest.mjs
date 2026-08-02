@@ -17,7 +17,7 @@ const manifestPath = resolve(
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const schemaPath = fileURLToPath(
   import.meta.resolve(
-    "@mdbase/connect-protocol/schemas/mdbase-app.schema.json",
+    "@mdbase-dev/connect-protocol/schemas/mdbase-app.schema.json",
   ),
 );
 const schema = JSON.parse(await readFile(schemaPath, "utf8"));

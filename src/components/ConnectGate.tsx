@@ -12,6 +12,10 @@ import {
   workoutSnapshot,
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
+import {
+  unwrapConnectOutcome,
+  type MdbaseConnection,
+} from "@mdbase-dev/connect";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -30,6 +34,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     void workoutSession.start()
+      .then(unwrapConnectOutcome)
       .catch((reason: unknown) => {
         if (active) setError(connectErrorMessage(reason));
       })
@@ -56,7 +61,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setOpening(true);
     setError("");
     try {
-      await workoutSession.authorize("choose");
+      unwrapConnectOutcome(await workoutSession.authorize("choose"));
     } catch (reason) {
       setError(connectErrorMessage(reason));
       setOpening(false);
@@ -67,7 +72,9 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setError("");
     try {
       invalidateConnectApiCache();
-      workoutSession.select(collectionId, { history: "replace" });
+      unwrapConnectOutcome(
+        workoutSession.select(collectionId, { history: "replace" }),
+      );
     } catch (reason) {
       setError(connectErrorMessage(reason));
     }
@@ -175,7 +182,7 @@ function ConnectedCollection({
   connection,
   children,
 }: {
-  connection: ReturnType<typeof workoutSession.select>;
+  connection: MdbaseConnection;
   children: ReactNode;
 }) {
   useEffect(() => {

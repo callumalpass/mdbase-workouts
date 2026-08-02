@@ -2,10 +2,11 @@ import {
   MdbaseBrowserSelection,
   MdbaseConnect,
   MdbaseConnectError,
+  ConnectOutcomeError,
   type MdbaseConnection,
   type MdbaseOperation,
   type MdbaseSessionSnapshot,
-} from "@mdbase/connect";
+} from "@mdbase-dev/connect";
 
 const environment = (import.meta as ImportMeta & {
   env: Record<string, string | boolean | undefined>;
@@ -62,13 +63,19 @@ export function connectIsRequired(): boolean {
 }
 
 export function connectErrorMessage(error: unknown): string {
-  if (error instanceof MdbaseConnectError) {
-    if (error.code === "connector_offline") return "The computer holding this collection is offline.";
-    if (error.code === "not_authorized" || error.code === "authorization_expired") {
+  if (
+    error instanceof MdbaseConnectError ||
+    error instanceof ConnectOutcomeError
+  ) {
+    const code = error instanceof ConnectOutcomeError
+      ? error.problem.code
+      : error.code;
+    if (code === "connector_offline") return "The computer holding this collection is offline.";
+    if (code === "not_authorized" || code === "authorization_expired") {
       return "This connection has expired. Choose the collection again.";
     }
-    if (error.code === "insufficient_access") return "This connection does not include the access Workouts needs.";
-    if (error.code === "unknown_collection") return "That collection is no longer authorized on this device.";
+    if (code === "insufficient_access") return "This connection does not include the access Workouts needs.";
+    if (code === "unknown_collection") return "That collection is no longer authorized on this device.";
   }
   if (error instanceof Error) return error.message;
   return "The workout collection could not be reached.";
