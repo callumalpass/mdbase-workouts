@@ -2,7 +2,7 @@
 
 A workout tracking application that stores all data as markdown files with YAML frontmatter, managed by [mdbase](https://github.com/callumalpass/mdbase-spec). Users plan workouts, log sessions with per-set tracking, record quick one-off exercises, and browse their history -- all persisted as human-readable `.md` files on disk rather than in a traditional database.
 
-The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase/connect` browser SDK to open a compatible local or hosted workout collection.
+The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase-dev/connect` browser SDK to open a compatible local or hosted workout collection.
 
 This project is an implementation of [mdbase-spec](https://github.com/callumalpass/mdbase-spec).
 
@@ -16,7 +16,7 @@ This project is an implementation of [mdbase-spec](https://github.com/callumalpa
 
 The app has three layers:
 
-- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. The hosted build reads and writes through `@mdbase/connect`; local development uses the JSON API unless Connect is explicitly enabled. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
+- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. The hosted build reads and writes through `@mdbase-dev/connect`; local development uses the JSON API unless Connect is explicitly enabled. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
 - **Backend API** (`server/`): An optional Hono server for local and self-hosted development. Each resource type (exercises, sessions, plans, plan-templates, quick-logs) has its own route file exposing standard CRUD endpoints. A `/api/today` endpoint aggregates today's plans, sessions, quick logs, and available templates into a single response. The server uses `@callumalpass/mdbase` to read, write, query, and validate markdown records.
 - **Data storage** (`data/`): Plain markdown files organized into folders by type. Each file has YAML frontmatter containing structured fields and an optional markdown body. Type definitions in `data/_types/*.md` declare the schema for each record type. Cross-record references use wikilink syntax (e.g. `[[exercises/bench-press]]`).
 

@@ -17,14 +17,15 @@ import type {
   WeeklyStatsResponse,
 } from "./types";
 import type {
+  ConnectOutcome,
   JsonObject,
   MdbaseConnection,
-  MdbaseOperationEnvelope,
   QueryInput,
   QueryRecord,
   QueryResult,
   RecordDocument,
-} from "@mdbase/connect";
+} from "@mdbase-dev/connect";
+import { unwrapConnectOutcome } from "@mdbase-dev/connect";
 import { requireWorkoutConnection } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
@@ -54,12 +55,8 @@ const sourceCache = new Map<string, {
   pending?: Promise<QueryRow[]>;
 }>();
 
-function validResult<Result>(envelope: MdbaseOperationEnvelope<Result>): Result {
-  if (!envelope.valid) {
-    const diagnostic = envelope.diagnostics.find((item) => item.severity === "error") ?? envelope.diagnostics[0];
-    throw new Error(diagnostic?.message || "The collection rejected this change.");
-  }
-  return envelope.result;
+function validResult<Result>(outcome: ConnectOutcome<Result>): Result {
+  return unwrapConnectOutcome(outcome);
 }
 
 function contract(type: WorkoutType, provider?: string) {
@@ -71,7 +68,9 @@ function contract(type: WorkoutType, provider?: string) {
 }
 
 async function createProvider(type: WorkoutType): Promise<string> {
-  const description = await requireWorkoutConnection().describe();
+  const description = unwrapConnectOutcome(
+    await requireWorkoutConnection().describe(),
+  );
   const descriptor = description.contracts.find(
     (candidate) =>
       candidate.id === CONTRACTS[type] &&
@@ -437,7 +436,9 @@ export const connectApi = {
   },
   settings: {
     get: async () => {
-      const description = await requireWorkoutConnection().describe();
+      const description = unwrapConnectOutcome(
+        await requireWorkoutConnection().describe(),
+      );
       return {
         dataDir: requireWorkoutConnection().collectionId,
         configDataDir: "mdbase connect",

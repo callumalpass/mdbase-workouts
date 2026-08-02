@@ -7,6 +7,7 @@ import {
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
 import { clearWorkoutCache } from "../lib/workout-cache";
+import { unwrapConnectOutcome } from "@mdbase-dev/connect";
 
 interface Props {
   open: boolean;
@@ -69,7 +70,8 @@ export default function SettingsSheet({ open, onClose }: Props) {
     setDirectBusy(true);
     setError("");
     try {
-      const status = await connection?.requestDirectAccess();
+      const outcome = await connection?.requestDirectAccess();
+      const status = outcome ? unwrapConnectOutcome(outcome) : undefined;
       if (status === "denied") {
         setError("Local network access is blocked in this browser.");
       } else if (status === "unavailable") {
@@ -149,9 +151,11 @@ export default function SettingsSheet({ open, onClose }: Props) {
                 type="button"
                 onClick={() => {
                   invalidateConnectApiCache();
-                  workoutSession.select(connection.collectionId, {
-                    history: "replace",
-                  });
+                  unwrapConnectOutcome(
+                    workoutSession.select(connection.collectionId, {
+                      history: "replace",
+                    }),
+                  );
                   onClose();
                 }}
                 className="mt-2 block w-full border border-rule px-3 py-2 text-left text-xs text-faded active:bg-paper"
@@ -161,7 +165,11 @@ export default function SettingsSheet({ open, onClose }: Props) {
             ))}
             <button
               type="button"
-              onClick={() => void workoutSession.authorize("choose")}
+              onClick={() =>
+                void workoutSession
+                  .authorize("choose")
+                  .then(unwrapConnectOutcome)
+              }
               className="mt-2 block w-full border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper"
             >
               Connect another collection

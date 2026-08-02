@@ -11,7 +11,13 @@ import type {
   MdbaseConnectionInfo,
   QueryRecord,
   RecordDocument,
-} from "@mdbase/connect";
+} from "@mdbase-dev/connect";
+import {
+  connectFailure,
+  connectProblem,
+  connectSuccess,
+  unwrapConnectOutcome,
+} from "@mdbase-dev/connect";
 
 const boundConnection = {
   authorizationCapabilities: vi.fn(() => ({
@@ -95,8 +101,10 @@ beforeEach(() => {
   vi.spyOn(boundConnection, "info").mockReturnValue(info);
   vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
   vi.spyOn(workoutConnect, "connection").mockReturnValue(boundConnection);
-  workoutSession.select(info.collectionId, { history: "replace" });
-  vi.spyOn(boundConnection, "describe").mockResolvedValue({
+  unwrapConnectOutcome(
+    workoutSession.select(info.collectionId, { history: "replace" }),
+  );
+  vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
     protocol_version: 1,
     collection_id: "workouts-test",
     display_name: "Test workouts",
@@ -111,7 +119,7 @@ beforeEach(() => {
       contractDescriptor("quick-log"),
       contractDescriptor("session"),
     ],
-  });
+  }));
 });
 
 afterEach(() => {
@@ -121,10 +129,7 @@ afterEach(() => {
 
 describe("Connect workout API", () => {
   it("unwraps query envelopes into workout records", async () => {
-    vi.spyOn(boundConnection, "query").mockResolvedValue({
-      valid: true,
-      diagnostics: [],
-      result: {
+    vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [queryRecord(
           "exercises/bench-press.md",
           {
@@ -137,8 +142,7 @@ describe("Connect workout API", () => {
           ["exercise"],
         )],
         meta: { total_count: 1, has_more: false },
-      },
-    });
+    }));
 
     await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({
       path: "exercises/bench-press.md",
@@ -154,15 +158,11 @@ describe("Connect workout API", () => {
   });
 
   it("uses the canonical patch input for updates", async () => {
-    const update = vi.spyOn(boundConnection, "update").mockResolvedValue({
-      valid: true,
-      diagnostics: [],
-      result: recordDocument(
+    const update = vi.spyOn(boundConnection, "update").mockResolvedValue(connectSuccess(recordDocument(
         "exercises/bench-press.md",
         { name: "Paused Bench Press" },
         ["exercise"],
-      ),
-    });
+      )));
 
     await connectApi.exercises.update("bench-press", { name: "Paused Bench Press" });
 
@@ -177,7 +177,7 @@ describe("Connect workout API", () => {
   });
 
   it("selects one exact provider when creating into a contract with several implementations", async () => {
-    vi.spyOn(boundConnection, "describe").mockResolvedValue({
+    vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
       protocol_version: 1,
       collection_id: "workouts-test",
       display_name: "Test workouts",
@@ -192,16 +192,12 @@ describe("Connect workout API", () => {
           implementation("exercise"),
         ],
       }],
-    });
-    const create = vi.spyOn(boundConnection, "create").mockResolvedValue({
-      valid: true,
-      diagnostics: [],
-      result: recordDocument(
+    }));
+    const create = vi.spyOn(boundConnection, "create").mockResolvedValue(connectSuccess(recordDocument(
         "exercises/bench-press.md",
         { name: "Bench Press" },
         ["exercise"],
-      ),
-    });
+      )));
 
     await connectApi.exercises.create({
       name: "Bench Press",
@@ -227,28 +223,26 @@ describe("Connect workout API", () => {
   });
 
   it("surfaces collection diagnostics", async () => {
-    vi.spyOn(boundConnection, "query").mockResolvedValue({
-      valid: false,
-      result: { results: [], meta: { total_count: 0, has_more: false } },
-      diagnostics: [{
-        severity: "error",
-        code: "invalid_query",
-        message: "The workout query is not valid.",
-      }],
-    });
+    vi.spyOn(boundConnection, "query").mockResolvedValue(connectFailure(
+      connectProblem("operation_invalid", "The workout query is not valid.", {
+        details: {
+          diagnostics: [{
+            severity: "error",
+            code: "invalid_query",
+            message: "The workout query is not valid.",
+          }],
+        },
+      }),
+    ));
 
     await expect(connectApi.exercises.list()).rejects.toThrow("The workout query is not valid.");
   });
 
   it("shares collection scans between dashboard stats", async () => {
-    const query = vi.spyOn(boundConnection, "query").mockResolvedValue({
-      valid: true,
-      diagnostics: [],
-      result: {
+    const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
         meta: { total_count: 0, has_more: false },
-      },
-    });
+    }));
 
     await Promise.all([
       connectApi.stats.get("Australia/Melbourne"),
@@ -264,14 +258,10 @@ describe("Connect workout API", () => {
   });
 
   it("keeps a cold Today startup to five contract queries", async () => {
-    const query = vi.spyOn(boundConnection, "query").mockResolvedValue({
-      valid: true,
-      diagnostics: [],
-      result: {
+    const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
         meta: { total_count: 0, has_more: false },
-      },
-    });
+    }));
 
     await Promise.all([
       connectApi.today("Australia/Melbourne"),
@@ -301,34 +291,26 @@ describe("Connect workout API", () => {
     });
     const query = vi.spyOn(boundConnection, "query")
       .mockImplementationOnce(() => stale)
-      .mockResolvedValue({
-        valid: true,
-        diagnostics: [],
-        result: {
+      .mockResolvedValue(connectSuccess({
           results: [queryRecord(
             "exercises/fresh.md",
             { name: "Fresh" },
             ["exercise"],
           )],
           meta: { total_count: 1, has_more: false },
-        },
-      });
+      }));
 
     const staleResult = connectApi.exercises.list();
     invalidateConnectApiCache();
     const freshResult = connectApi.exercises.list();
-    resolveStale({
-      valid: true,
-      diagnostics: [],
-      result: {
+    resolveStale(connectSuccess({
         results: [queryRecord(
           "exercises/stale.md",
           { name: "Stale" },
           ["exercise"],
         )],
         meta: { total_count: 1, has_more: false },
-      },
-    });
+    }));
 
     await expect(staleResult).resolves.toEqual([expect.objectContaining({ name: "Stale" })]);
     await expect(freshResult).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
