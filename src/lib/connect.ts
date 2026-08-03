@@ -4,8 +4,7 @@ import {
   MdbaseConnectError,
   ConnectOutcomeError,
   type MdbaseConnection,
-  type MdbaseOperation,
-  type MdbaseSessionSnapshot,
+  type MdbaseApplicationSessionSnapshot,
 } from "@mdbase-dev/connect";
 
 const environment = (import.meta as ImportMeta & {
@@ -15,29 +14,19 @@ const serverUrl = String(environment.VITE_MDBASE_CONNECT_URL || "https://connect
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
 const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
 
-export const workoutOperations: MdbaseOperation[] = [
-  "describe",
-  "read",
-  "query",
-  "create",
-  "update",
-  "delete",
-];
-
 export const workoutConnect = new MdbaseConnect({
   serverUrl,
   manifest,
   redirectUri: appRoot.href,
 });
 
-export const workoutSession = workoutConnect.createSession({
-  operations: workoutOperations,
+export const workoutSession = workoutConnect.createApplicationSession({
   selection: new MdbaseBrowserSelection({
     fallbackPath: appRoot.pathname,
   }),
 });
 
-export function workoutSnapshot(): MdbaseSessionSnapshot {
+export function workoutSnapshot(): MdbaseApplicationSessionSnapshot {
   return workoutSession.getSnapshot();
 }
 
@@ -46,8 +35,7 @@ export function subscribeToWorkoutSession(listener: () => void): () => void {
 }
 
 export function workoutConnection(): MdbaseConnection | null {
-  const snapshot = workoutSnapshot();
-  return snapshot.status === "ready" ? snapshot.connection : null;
+  return workoutSession.connection();
 }
 
 export function requireWorkoutConnection(): MdbaseConnection {

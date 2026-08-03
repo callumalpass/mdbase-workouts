@@ -4,7 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
-const cli = process.env.MDBASE_CONNECT_DOGFOOD_CLI || "/home/calluma/projects/mdbase-connect-dogfood/target/debug/mdbase-connect";
+const cli = process.env.MDBASE_CONNECT_DOGFOOD_CLI || "mdbase";
 const stateDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_STATE_DIR");
 const collectionDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_COLLECTION_DIR");
 const userName = process.env.MDBASE_CONNECT_DOGFOOD_USER_NAME || "Workout Dogfood";
@@ -17,7 +17,7 @@ function requiredEnvironment(name: string): string {
 }
 
 async function connector(args: string[]) {
-  const result = await run(cli, ["--state-dir", stateDir, "--compact", ...args]);
+  const result = await run(cli, ["--state-dir", stateDir, "--json", "connect", ...args]);
   const body = JSON.parse(result.stdout);
   if (!body.ok) throw new Error(body.error?.message || "Connector command failed.");
   return body.result;
@@ -77,7 +77,7 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   expect(markdown).toContain("42.5");
   expect(markdown).toContain("7");
 
-  await connector(["access", "pause", "true"]);
+  await connector(["access", "pause"]);
   try {
     // The live Today view refreshes through the SDK. Pausing Connect must make
     // that real collection query fail closed and leave an auditable denial.
@@ -92,6 +92,6 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
       ) ?? null;
     }, "The paused SDK query was not recorded in Connect activity.");
   } finally {
-    await connector(["access", "pause", "false"]);
+    await connector(["access", "resume"]);
   }
 });
