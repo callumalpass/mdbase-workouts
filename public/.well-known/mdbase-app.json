@@ -11,23 +11,28 @@
     "contracts": [
       {
         "id": "mdbase.workouts.exercise",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "digest": "sha256:fedf08d0ab2f78e1b367fa3c58ce2bcddd2d15c0226fa388e5360b189024611c"
       },
       {
         "id": "mdbase.workouts.plan",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "digest": "sha256:5d07fb3645c38bf5fad9b705952878bf650a90396c0218f63bf929a733c95ed9"
       },
       {
         "id": "mdbase.workouts.plan-template",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "digest": "sha256:10ca44741552176c410311982776d8de1fc674d43c676f7ee22293f836bd0c63"
       },
       {
         "id": "mdbase.workouts.quick-log",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "digest": "sha256:cd3eafaca7265d91eacabc30ec8720aecc352e6fc812087f92a560d5c0aba75c"
       },
       {
         "id": "mdbase.workouts.session",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "digest": "sha256:7677fb5d39356f31fa385df3cd6cbd0df3edd1aade822c56390a75cc02f2eaa4"
       }
     ]
   },
@@ -37,23 +42,28 @@
         "provides": [
           {
             "id": "mdbase.workouts.exercise",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "digest": "sha256:fedf08d0ab2f78e1b367fa3c58ce2bcddd2d15c0226fa388e5360b189024611c"
           },
           {
             "id": "mdbase.workouts.plan",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "digest": "sha256:5d07fb3645c38bf5fad9b705952878bf650a90396c0218f63bf929a733c95ed9"
           },
           {
             "id": "mdbase.workouts.plan-template",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "digest": "sha256:10ca44741552176c410311982776d8de1fc674d43c676f7ee22293f836bd0c63"
           },
           {
             "id": "mdbase.workouts.quick-log",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "digest": "sha256:cd3eafaca7265d91eacabc30ec8720aecc352e6fc812087f92a560d5c0aba75c"
           },
           {
             "id": "mdbase.workouts.session",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "digest": "sha256:7677fb5d39356f31fa385df3cd6cbd0df3edd1aade822c56390a75cc02f2eaa4"
           }
         ],
         "manifest": {
@@ -65,60 +75,70 @@
           "resources": [
             {
               "kind": "contract",
+              "mode": "managed",
               "source": "contracts/mdbase.workouts.exercise.md",
               "target": "_contracts/mdbase.workouts.exercise.md",
               "digest": "sha256:47d095531d40ba7778a5a51dbb6738652ad59bac48f85952d172805bd86d1d02"
             },
             {
               "kind": "type",
+              "mode": "seed",
               "source": "types/exercise.md",
               "target": "_types/exercise.md",
               "digest": "sha256:3333d9caf342e2625012fd26dcdb48eee02add881c386cca9fdea205852fcc22"
             },
             {
               "kind": "contract",
+              "mode": "managed",
               "source": "contracts/mdbase.workouts.plan.md",
               "target": "_contracts/mdbase.workouts.plan.md",
               "digest": "sha256:86d384bb80be737f4b6569b9acf8a3a76bd28d73aec78444ee67ad3fc68b375a"
             },
             {
               "kind": "type",
+              "mode": "seed",
               "source": "types/plan.md",
               "target": "_types/plan.md",
               "digest": "sha256:99d1d3515c4d8074594da0fce29fe6c1a2ba241b33ff6f0c95933b4a6a2a45b5"
             },
             {
               "kind": "contract",
+              "mode": "managed",
               "source": "contracts/mdbase.workouts.plan-template.md",
               "target": "_contracts/mdbase.workouts.plan-template.md",
               "digest": "sha256:3f9d7802d074cd630070cf2767345fc69ead8f7baa204d9015a123d434a6f8d2"
             },
             {
               "kind": "type",
+              "mode": "seed",
               "source": "types/plan-template.md",
               "target": "_types/plan-template.md",
               "digest": "sha256:1c9155471755047cfa6c8176b3ef723f5ac2ae905fae78fb01a3864423ccc672"
             },
             {
               "kind": "contract",
+              "mode": "managed",
               "source": "contracts/mdbase.workouts.quick-log.md",
               "target": "_contracts/mdbase.workouts.quick-log.md",
               "digest": "sha256:fbe74ad236099fa8831cbe3bed97f10b57c54c17d13b52af270fb93be8cc01d7"
             },
             {
               "kind": "type",
+              "mode": "seed",
               "source": "types/quick-log.md",
               "target": "_types/quick-log.md",
               "digest": "sha256:8f685a1566586961285dfecfc0e00bbb7a44345f6ef13084e979dc9f827aaacb"
             },
             {
               "kind": "contract",
+              "mode": "managed",
               "source": "contracts/mdbase.workouts.session.md",
               "target": "_contracts/mdbase.workouts.session.md",
               "digest": "sha256:fa27f55d738788e857d9517db12df522aff89c97cdf50d3d938bf024252b7caf"
             },
             {
               "kind": "type",
+              "mode": "seed",
               "source": "types/session.md",
               "target": "_types/session.md",
               "digest": "sha256:941225eacc7f7f4a3658e4b50841b58c7478d2cb9b129e2f77ded55dab566c80"

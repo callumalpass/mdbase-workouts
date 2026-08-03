@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { dataContractDigest } from "@callumalpass/mdbase";
+import { parse as parseYaml } from "yaml";
 
 const defaultOrigin = "https://callumalpass.github.io";
 const defaultBasePath = "/mdbase-workouts/";
@@ -32,13 +34,16 @@ const packResources = (
       return [
         {
           kind: "contract",
+          mode: "managed",
           source: contractSource,
           target: `_contracts/${contract}.md`,
           digest: digest(contractDocument),
+          contractDigest: dataContractDigest(parseFrontmatter(contractDocument)),
           document: contractDocument,
         },
         {
           kind: "type",
+          mode: "seed",
           source: typeSource,
           target: `_types/${name}.md`,
           digest: digest(typeDocument),
@@ -48,6 +53,16 @@ const packResources = (
     }),
   )
 ).flat();
+const contractDigests = new Map(
+  packResources
+    .filter((resource) => resource.kind === "contract")
+    .map((resource) => [resource.source.slice("contracts/".length, -".md".length), resource.contractDigest]),
+);
+const requirement = ({ contract }) => {
+  const contractDigest = contractDigests.get(contract);
+  if (!contractDigest) throw new Error(`No contract digest was generated for ${contract}.`);
+  return { id: contract, version: "1.0.0", digest: contractDigest };
+};
 
 await mkdir(resolve(target, ".."), { recursive: true });
 await writeFile(target, `${JSON.stringify({
@@ -58,18 +73,12 @@ await writeFile(target, `${JSON.stringify({
   redirect_uris: [appUrl],
   requirements: {
     access: "contract",
-    contracts: requiredTypes.map(({ contract }) => ({
-      id: contract,
-      version: "1.0.0",
-    })),
+    contracts: requiredTypes.map(requirement),
   },
   provisions: {
     type_packs: [
       {
-        provides: requiredTypes.map(({ contract }) => ({
-          id: contract,
-          version: "1.0.0",
-        })),
+        provides: requiredTypes.map(requirement),
         manifest: {
           kind: "mdbase.type-pack",
           id: "mdbase.workouts",
@@ -77,8 +86,8 @@ await writeFile(target, `${JSON.stringify({
           name: "mdbase Workouts",
           description:
             "Portable workout contracts and the app's default implementations.",
-          resources: packResources.map(({ document: _document, ...resource }) =>
-            resource
+          resources: packResources.map(
+            ({ document: _document, contractDigest: _contractDigest, ...resource }) => resource,
           ),
         },
         resources: packResources.map(({ source, document }) => ({
@@ -92,6 +101,12 @@ await writeFile(target, `${JSON.stringify({
 
 function digest(document) {
   return `sha256:${createHash("sha256").update(document).digest("hex")}`;
+}
+
+function parseFrontmatter(document) {
+  const match = document.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) throw new Error("Contract resource has no YAML frontmatter.");
+  return parseYaml(match[1]);
 }
 
 function normalizeBasePath(value) {

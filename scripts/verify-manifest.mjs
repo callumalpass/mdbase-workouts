@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Collection, installTypePack } from "@callumalpass/mdbase";
+import {
+  Collection,
+  applyTypePack,
+  assessTypePack,
+} from "@callumalpass/mdbase";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
@@ -60,34 +64,38 @@ try {
     "spec_version: 0.3.0\nsettings:\n  validation: error\n",
   );
 
-  const dryRun = await installTypePack(
-    collectionRoot,
-    pack.manifest,
-    pack.resources,
-    { dryRun: true },
-  );
-  assertValid(dryRun, "dry-run");
+  const provision = { manifest: pack.manifest, resources: pack.resources };
+  const assessment = await assessTypePack(collectionRoot, provision, {
+    installedBy: "dev.mdbase.workouts",
+  });
+  assertValid(assessment, "assessment");
   if (
-    dryRun.result.resources.length !== 10 ||
-    dryRun.result.resources.some(({ action }) => action !== "create")
+    assessment.result.resources.length !== 10 ||
+    assessment.result.resources.some(({ action }) => action !== "create")
   ) {
-    fail("The type-pack dry-run must report ten creates.");
+    fail("The type-pack assessment must report ten creates.");
   }
 
-  const installed = await installTypePack(
-    collectionRoot,
-    pack.manifest,
-    pack.resources,
-  );
+  const installed = await applyTypePack(collectionRoot, provision, {
+    installedBy: "dev.mdbase.workouts",
+    expectedAssessmentDigest: assessment.result.assessment_digest,
+  });
   assertValid(installed, "install");
-  const repeated = await installTypePack(
-    collectionRoot,
-    pack.manifest,
-    pack.resources,
-  );
+  const repeatedAssessment = await assessTypePack(collectionRoot, provision, {
+    installedBy: "dev.mdbase.workouts",
+  });
+  assertValid(repeatedAssessment, "repeat assessment");
+  const repeated = await applyTypePack(collectionRoot, provision, {
+    installedBy: "dev.mdbase.workouts",
+    expectedAssessmentDigest: repeatedAssessment.result.assessment_digest,
+  });
   assertValid(repeated, "repeat install");
-  if (repeated.result.resources.some(({ action }) => action !== "unchanged")) {
-    fail("Installing the exact same type pack twice must be idempotent.");
+  if (
+    repeated.result.resources.some(
+      ({ action }) => action !== "unchanged" && action !== "preserve",
+    )
+  ) {
+    fail("Reapplying the exact same type pack must preserve seeded user resources.");
   }
 
   await mkdir(join(collectionRoot, "exercises"));
