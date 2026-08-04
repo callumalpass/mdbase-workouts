@@ -72,7 +72,7 @@ await writeFile(target, `${JSON.stringify({
   homepage: appUrl,
   redirect_uris: [appUrl],
   requirements: {
-    access: "contract",
+    access: "full_collection",
     contracts: requiredTypes.map(requirement),
     capabilities: {
       contract_version: 1,
@@ -84,6 +84,7 @@ await writeFile(target, `${JSON.stringify({
         "records.update",
         "records.delete",
         "definitions.contracts.current",
+        "definitions.type-pack.apply",
       ],
     },
   },

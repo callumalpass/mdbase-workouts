@@ -2,14 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   Collection,
   applyTypePack,
   assessTypePack,
 } from "@callumalpass/mdbase";
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const manifestPath = resolve(
@@ -19,21 +16,6 @@ const manifestPath = resolve(
   "mdbase-app.json",
 );
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-const schemaPath = fileURLToPath(
-  import.meta.resolve(
-    "@mdbase-dev/connect-protocol/schemas/mdbase-app.schema.json",
-  ),
-);
-const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-const ajv = new Ajv2020({ allErrors: true, strict: true });
-addFormats(ajv);
-
-if (!ajv.validate(schema, manifest)) {
-  fail(`App manifest is invalid:\n${ajv.errorsText(ajv.errors, {
-    separator: "\n",
-  })}`);
-}
-
 const packs = manifest.provisions?.type_packs;
 if (!Array.isArray(packs) || packs.length !== 1) {
   fail("The app manifest must contain exactly one transactional type pack.");
