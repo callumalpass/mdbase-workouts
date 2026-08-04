@@ -10,6 +10,12 @@
       "sha512": "cdJsnBo1hrod55hQTFgQ2oJD3XktueWuBZ2XzSyZq1cAt9hYdiDJpJ0Si4KoMjFNu340QGBaJWfgnfrSdXtGvA=="
     },
     {
+      "package": "devkit",
+      "file": "mdbase-dev-connect-dev-0.1.0-beta.32-e1c1f49cca00.tgz",
+      "bytes": 9242,
+      "sha512": "G7kdO/L1hkfsu/3tSn8tOMfcK3bFo2z3oJP/LFV9QWgcI1gaS6fYsMrXCMaKatdZ5alBjT9e1GSgECtmuqLhOw=="
+    },
+    {
       "package": "protocol",
       "file": "mdbase-dev-connect-protocol-0.1.0-beta.32-e1c1f49cca00.tgz",
       "bytes": 49658,
