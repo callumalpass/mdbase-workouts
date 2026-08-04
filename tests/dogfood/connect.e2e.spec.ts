@@ -137,7 +137,9 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   const collection = page.locator('input[type="radio"]').first();
   await expect(collection).toBeAttached();
   if (!(await collection.isChecked())) await collection.check();
-  await page.getByRole("button", { name: "Allow MDBase Workouts" }).click();
+  const existingTypeChoices = page.getByRole("radio", { name: /^Use an existing type/ });
+  for (const choice of await existingTypeChoices.all()) await choice.check();
+  await page.getByRole("button", { name: /allow MDBase Workouts$/i }).click();
 
   // The authorization tab owns the PKCE browser context and returns itself to
   // the application as soon as the portal records the explicit collection
