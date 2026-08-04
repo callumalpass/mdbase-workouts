@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   workoutConnect,
-  workoutOperations,
   workoutSession,
 } from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
@@ -9,6 +8,7 @@ import type {
   JsonObject,
   MdbaseConnection,
   MdbaseConnectionInfo,
+  MdbaseAppManifest,
   QueryRecord,
   RecordDocument,
 } from "@mdbase-dev/connect";
@@ -18,6 +18,21 @@ import {
   connectSuccess,
   unwrapConnectOutcome,
 } from "@mdbase-dev/connect";
+import { operationsForApplicationCapabilities } from "@mdbase-dev/connect-protocol";
+import workoutManifest from "../../public/.well-known/mdbase-app.json";
+
+const workoutOperations = operationsForApplicationCapabilities({
+  contract_version: 1,
+  required: [
+    "collection.inspect",
+    "records.read",
+    "records.query",
+    "records.create",
+    "records.update",
+    "records.delete",
+    "definitions.contracts.current",
+  ],
+});
 
 const boundConnection = {
   authorizationCapabilities: vi.fn(() => ({
@@ -35,6 +50,15 @@ const boundConnection = {
   delete: vi.fn(),
   describe: vi.fn(),
 } as unknown as MdbaseConnection;
+
+beforeAll(async () => {
+  vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
+    connectSuccess(workoutManifest as MdbaseAppManifest),
+  );
+  unwrapConnectOutcome(await workoutSession.start());
+});
+
+afterAll(() => workoutSession.destroy());
 
 function queryRecord(
   path: string,
@@ -92,6 +116,7 @@ beforeEach(() => {
       access: "contract",
     },
     route: "relay",
+    authority: { kind: "connector", durability: "computer" },
     directAccess: "permission_required",
   };
   Object.defineProperty(boundConnection, "collectionId", {

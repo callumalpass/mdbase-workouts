@@ -34,7 +34,19 @@
         "version": "1.0.0",
         "digest": "sha256:7677fb5d39356f31fa385df3cd6cbd0df3edd1aade822c56390a75cc02f2eaa4"
       }
-    ]
+    ],
+    "capabilities": {
+      "contract_version": 1,
+      "required": [
+        "collection.inspect",
+        "records.read",
+        "records.query",
+        "records.create",
+        "records.update",
+        "records.delete",
+        "definitions.contracts.current"
+      ]
+    }
   },
   "provisions": {
     "type_packs": [

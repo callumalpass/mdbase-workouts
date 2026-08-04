@@ -74,6 +74,18 @@ await writeFile(target, `${JSON.stringify({
   requirements: {
     access: "contract",
     contracts: requiredTypes.map(requirement),
+    capabilities: {
+      contract_version: 1,
+      required: [
+        "collection.inspect",
+        "records.read",
+        "records.query",
+        "records.create",
+        "records.update",
+        "records.delete",
+        "definitions.contracts.current",
+      ],
+    },
   },
   provisions: {
     type_packs: [

@@ -23,8 +23,8 @@
   "dependencies": {
     "@callumalpass/mdbase": "file:vendor/callumalpass-mdbase-0.3.0-rc.4-4f28ea27a15a.tgz",
     "@hono/node-server": "^2.0.12",
-    "@mdbase-dev/connect": "file:vendor/mdbase-dev-connect-0.1.0-beta.27-33890fcd1346.tgz",
-    "@mdbase-dev/connect-protocol": "file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.27-33890fcd1346.tgz",
+    "@mdbase-dev/connect": "file:vendor/mdbase-dev-connect-0.1.0-beta.28-58665cbf4e9a.tgz",
+    "@mdbase-dev/connect-protocol": "file:vendor/mdbase-dev-connect-protocol-0.1.0-beta.28-58665cbf4e9a.tgz",
     "hono": "^4.12.30",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -47,10 +47,12 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (snapshot.status === "ready") {
+    const connection = workoutSession.connection();
+    if (!connection) throw new Error("The ready workout session has no connection.");
     return (
       <ConnectedCollection
         key={snapshot.collectionId}
-        connection={snapshot.connection}
+        connection={connection}
       >
         {children}
       </ConnectedCollection>
@@ -86,7 +88,11 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
       : snapshot.reason === "authorization_lost"
         ? "Access to this collection was removed. Choose it again or open another collection."
         : "This bookmarked collection is not authorized on this device."
-    : "";
+    : snapshot.status === "authorization_required"
+      ? "This collection needs updated access for the current workout contracts. Review the changes to continue."
+      : snapshot.status === "blocked"
+        ? snapshot.problem.message
+        : "";
   const displayedError = error || unavailableMessage;
   const busy = starting || opening;
 
@@ -158,14 +164,20 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           <button
             type="button"
             disabled={busy}
-            onClick={() => void beginConnection()}
+            onClick={() => void (
+              snapshot.status === "authorization_required"
+                ? workoutSession.authorize("selected").then(unwrapConnectOutcome)
+                : beginConnection()
+            )}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
             {starting
               ? "Checking connection…"
               : opening
                 ? "Opening mdbase connect…"
-                : snapshot.connections.length
+                : snapshot.status === "authorization_required"
+                  ? "Review updated access"
+                  : snapshot.connections.length
                   ? "Connect another collection"
                   : "Choose workout collection"}
           </button>

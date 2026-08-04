@@ -20,7 +20,7 @@ function scope(collectionId = selectedCollectionId()): string {
 
 function selectedCollectionId(): string {
   const snapshot = workoutSnapshot();
-  return snapshot.status === "ready" ? snapshot.collectionId : "local";
+  return "collectionId" in snapshot ? snapshot.collectionId : "local";
 }
 
 function cachePrefix(collectionId?: string): string {

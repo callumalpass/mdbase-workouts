@@ -20,7 +20,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
     workoutSnapshot,
   );
   const connected = snapshot.status === "ready" ? snapshot.info : null;
-  const connection = snapshot.status === "ready" ? snapshot.connection : null;
+  const connection = snapshot.status === "ready" ? workoutSession.connection() : null;
   const [dataDir, setDataDir] = useState("");
   const [resolvedDir, setResolvedDir] = useState("");
   const [originalDir, setOriginalDir] = useState("");
@@ -106,11 +106,11 @@ export default function SettingsSheet({ open, onClose }: Props) {
                   Connection route
                 </p>
                 <p className="mt-2 text-sm font-semibold">
-                  {connected.route === "direct" || connected.directAccess === "available"
+                  {connected.directAccess === "available"
                     ? "Direct on this computer"
                     : "mdbase relay"}
                 </p>
-                {connected.directAccess === "available" || connected.route === "direct" ? (
+                {connected.directAccess === "available" ? (
                   <p className="mt-1 text-xs leading-5 text-faded">
                     Faster local reads are ready, and this collection stays available after the relay login expires.
                   </p>

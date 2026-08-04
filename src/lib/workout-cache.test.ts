@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import type { MdbaseConnectionInfo } from "@mdbase-dev/connect";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  connectSuccess,
+  unwrapConnectOutcome,
+  type MdbaseAppManifest,
+  type MdbaseConnectionInfo,
+} from "@mdbase-dev/connect";
 import { workoutConnect, workoutSession } from "./connect";
+import workoutManifest from "../../public/.well-known/mdbase-app.json";
 import {
   clearWorkoutCache,
   loadWorkoutCache,
@@ -8,12 +14,22 @@ import {
   writeWorkoutCache,
 } from "./workout-cache";
 
+beforeAll(async () => {
+  vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
+    connectSuccess(workoutManifest as MdbaseAppManifest),
+  );
+  unwrapConnectOutcome(await workoutSession.start());
+});
+
+afterAll(() => workoutSession.destroy());
+
 function useCollection(collectionId: string) {
   const info: MdbaseConnectionInfo = {
     collectionId,
     displayName: collectionId,
     operations: [],
     scope: { contracts: [], access: "full_collection" },
+    authority: { kind: "connector", durability: "computer" },
     route: "relay",
     directAccess: "permission_required",
   };
