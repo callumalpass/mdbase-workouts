@@ -23,88 +23,111 @@ import { clearWorkoutCache } from "./workout-cache";
 
 const BASE = "/api";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+export interface ApiRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number | null;
+}
+
+async function request<T>(path: string, init?: RequestInit, options: ApiRequestOptions = {}): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  const timer = options.timeoutMs == null
+    ? undefined
+    : window.setTimeout(
+      () => controller.abort(new DOMException(`Workout request timed out after ${options.timeoutMs}ms`, "TimeoutError")),
+      options.timeoutMs,
+    );
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    const value = await res.json();
+    if (init?.method && init.method !== "GET") clearWorkoutCache();
+    return value;
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+    if (timer !== undefined) window.clearTimeout(timer);
   }
-  const value = await res.json();
-  if (init?.method && init.method !== "GET") clearWorkoutCache();
-  return value;
 }
 
 const localApi = {
   exercises: {
-    list: () => request<Exercise[]>("/exercises"),
-    get: (slug: string) => request<Exercise>(`/exercises/${slug}`),
-    history: (slug: string) => request<ExerciseHistory>(`/exercises/${slug}/history`),
-    create: (data: CreateExerciseInput) =>
-      request<Exercise>("/exercises", { method: "POST", body: JSON.stringify(data) }),
-    update: (slug: string, data: Partial<CreateExerciseInput>) =>
-      request<Exercise>(`/exercises/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
-    lastSets: (slugs: string[]) =>
+    list: (options: ApiRequestOptions = {}) => request<Exercise[]>("/exercises", undefined, options),
+    get: (slug: string, options: ApiRequestOptions = {}) => request<Exercise>(`/exercises/${slug}`, undefined, options),
+    history: (slug: string, options: ApiRequestOptions = {}) => request<ExerciseHistory>(`/exercises/${slug}/history`, undefined, options),
+    create: (data: CreateExerciseInput, options: ApiRequestOptions = {}) =>
+      request<Exercise>("/exercises", { method: "POST", body: JSON.stringify(data) }, options),
+    update: (slug: string, data: Partial<CreateExerciseInput>, options: ApiRequestOptions = {}) =>
+      request<Exercise>(`/exercises/${slug}`, { method: "PUT", body: JSON.stringify(data) }, options),
+    lastSets: (slugs: string[], options: ApiRequestOptions = {}) =>
       request<LastSetsResponse>("/exercises/last-sets", {
         method: "POST",
         body: JSON.stringify({ slugs }),
-      }),
+      }, options),
   },
   quickLogs: {
-    list: (limit = 50) => request<QuickLog[]>(`/quick-logs?limit=${limit}`),
-    create: (data: CreateQuickLogInput) =>
-      request<QuickLog>("/quick-logs", { method: "POST", body: JSON.stringify(data) }),
+    list: (limit = 50, options: ApiRequestOptions = {}) => request<QuickLog[]>(`/quick-logs?limit=${limit}`, undefined, options),
+    create: (data: CreateQuickLogInput, options: ApiRequestOptions = {}) =>
+      request<QuickLog>("/quick-logs", { method: "POST", body: JSON.stringify(data) }, options),
   },
   sessions: {
-    list: (limit = 20, offset = 0) =>
+    list: (limit = 20, offset = 0, options: ApiRequestOptions = {}) =>
       request<SessionListResponse>(
-        `/sessions?limit=${limit}&offset=${offset}`
+        `/sessions?limit=${limit}&offset=${offset}`,
+        undefined,
+        options,
       ),
-    get: (id: string) => request<Session>(`/sessions/${id}`),
-    create: (data: CreateSessionInput) =>
-      request<Session>("/sessions", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<Session>) =>
-      request<Session>(`/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    delete: (id: string) =>
-      request<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }),
+    get: (id: string, options: ApiRequestOptions = {}) => request<Session>(`/sessions/${id}`, undefined, options),
+    create: (data: CreateSessionInput, options: ApiRequestOptions = {}) =>
+      request<Session>("/sessions", { method: "POST", body: JSON.stringify(data) }, options),
+    update: (id: string, data: Partial<Session>, options: ApiRequestOptions = {}) =>
+      request<Session>(`/sessions/${id}`, { method: "PUT", body: JSON.stringify(data) }, options),
+    delete: (id: string, options: ApiRequestOptions = {}) =>
+      request<{ ok: boolean }>(`/sessions/${id}`, { method: "DELETE" }, options),
   },
   plans: {
-    list: (status?: string) =>
-      request<Plan[]>(`/plans${status ? `?status=${status}` : ""}`),
-    get: (id: string) => request<Plan>(`/plans/${id}`),
-    create: (data: CreatePlanInput) =>
-      request<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<Plan>) =>
-      request<Plan>(`/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    list: (status?: string, options: ApiRequestOptions = {}) =>
+      request<Plan[]>(`/plans${status ? `?status=${status}` : ""}`, undefined, options),
+    get: (id: string, options: ApiRequestOptions = {}) => request<Plan>(`/plans/${id}`, undefined, options),
+    create: (data: CreatePlanInput, options: ApiRequestOptions = {}) =>
+      request<Plan>("/plans", { method: "POST", body: JSON.stringify(data) }, options),
+    update: (id: string, data: Partial<Plan>, options: ApiRequestOptions = {}) =>
+      request<Plan>(`/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }, options),
   },
   planTemplates: {
-    list: () => request<PlanTemplate[]>("/plan-templates"),
-    get: (id: string) => request<PlanTemplate>(`/plan-templates/${id}`),
-    create: (data: CreatePlanTemplateInput) =>
-      request<PlanTemplate>("/plan-templates", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<PlanTemplate>) =>
-      request<PlanTemplate>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    delete: (id: string) =>
-      request<{ ok: boolean }>(`/plan-templates/${id}`, { method: "DELETE" }),
+    list: (options: ApiRequestOptions = {}) => request<PlanTemplate[]>("/plan-templates", undefined, options),
+    get: (id: string, options: ApiRequestOptions = {}) => request<PlanTemplate>(`/plan-templates/${id}`, undefined, options),
+    create: (data: CreatePlanTemplateInput, options: ApiRequestOptions = {}) =>
+      request<PlanTemplate>("/plan-templates", { method: "POST", body: JSON.stringify(data) }, options),
+    update: (id: string, data: Partial<PlanTemplate>, options: ApiRequestOptions = {}) =>
+      request<PlanTemplate>(`/plan-templates/${id}`, { method: "PUT", body: JSON.stringify(data) }, options),
+    delete: (id: string, options: ApiRequestOptions = {}) =>
+      request<{ ok: boolean }>(`/plan-templates/${id}`, { method: "DELETE" }, options),
   },
   stats: {
-    get: (timezone?: string) =>
-      request<StatsResponse>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
-    weekly: (timezone?: string) =>
-      request<WeeklyStatsResponse>(`/stats/weekly${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
+    get: (timezone?: string, options: ApiRequestOptions = {}) =>
+      request<StatsResponse>(`/stats${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`, undefined, options),
+    weekly: (timezone?: string, options: ApiRequestOptions = {}) =>
+      request<WeeklyStatsResponse>(`/stats/weekly${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`, undefined, options),
   },
-  today: (timezone?: string) =>
-    request<TodayData>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`),
+  today: (timezone?: string, options: ApiRequestOptions = {}) =>
+    request<TodayData>(`/today${timezone ? `?timezone=${encodeURIComponent(timezone)}` : ""}`, undefined, options),
   settings: {
-    get: () =>
-      request<SettingsResponse>("/settings"),
-    update: (data: { dataDir: string }) =>
+    get: (options: ApiRequestOptions = {}) =>
+      request<SettingsResponse>("/settings", undefined, options),
+    update: (data: { dataDir: string }, options: ApiRequestOptions = {}) =>
       request<SettingsResponse>("/settings", {
         method: "PUT",
         body: JSON.stringify(data),
-      }),
+      }, options),
   },
 };
 

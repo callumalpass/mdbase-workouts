@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { pathToSlug, parseWikilink } from "../lib/utils";
 import { useLastUsed } from "../hooks/useLocalStorage";
 import { useDragToDismiss } from "../hooks/useDragToDismiss";
+import { useRequestOptions } from "../hooks/useRequestOptions";
 import ExercisePicker from "./ExercisePicker";
 import SetInput from "./SetInput";
 import SuccessStamp from "./SuccessStamp";
@@ -25,6 +26,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
   const [error, setError] = useState("");
   const { getLastUsed, saveLastUsed } = useLastUsed();
   const [recentSlugs, setRecentSlugs] = useState<string[]>([]);
+  const requestOptions = useRequestOptions(20_000, open);
 
   const handleClose = useCallback(() => {
     setExercise(null);
@@ -40,7 +42,8 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
 
   useEffect(() => {
     if (open) {
-      api.quickLogs.list(50).then((logs) => {
+      const controller = new AbortController();
+      api.quickLogs.list(50, { signal: controller.signal, timeoutMs: 10_000 }).then((logs) => {
         const seen = new Set<string>();
         const slugs: string[] = [];
         for (const log of logs) {
@@ -50,8 +53,9 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
             slugs.push(slug);
           }
         }
-        setRecentSlugs(slugs);
-      });
+        if (!controller.signal.aborted) setRecentSlugs(slugs);
+      }).catch(() => {});
+      return () => controller.abort("Quick log sheet closed");
     }
   }, [open]);
 
@@ -82,7 +86,7 @@ export default function QuickLogSheet({ open, onClose, onLogged }: Props) {
     if (distance) data.distance = Number(distance);
 
     try {
-      await api.quickLogs.create(data);
+      await api.quickLogs.create(data, requestOptions());
       saveLastUsed(slug, {
         ...(weight ? { weight: Number(weight) } : {}),
         ...(reps ? { reps: Number(reps) } : {}),

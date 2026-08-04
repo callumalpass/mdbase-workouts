@@ -1,6 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { readFileSync } from "node:fs";
+
+const developmentHttps = process.env.MDBASE_WORKOUTS_HTTPS_KEY
+  && process.env.MDBASE_WORKOUTS_HTTPS_CERT
+  ? {
+      key: readFileSync(process.env.MDBASE_WORKOUTS_HTTPS_KEY),
+      cert: readFileSync(process.env.MDBASE_WORKOUTS_HTTPS_CERT),
+    }
+  : undefined;
 
 export default defineConfig({
   base: "./",
@@ -63,7 +72,8 @@ export default defineConfig({
     port: 5177,
     strictPort: true,
     host: true,
-    allowedHosts: ["minipc.tail2b6cde.ts.net"],
+    allowedHosts: ["minipc.tail2b6cde.ts.net", "host.docker.internal"],
+    https: developmentHttps,
     proxy: {
       "/api": {
         target: "http://localhost:3002",

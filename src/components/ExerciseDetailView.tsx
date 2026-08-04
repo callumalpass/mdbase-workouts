@@ -3,6 +3,7 @@ import { useExerciseDetail } from "../hooks/useExerciseDetail";
 import { formatDate, formatSet, formatTime } from "../lib/utils";
 import { api } from "../lib/api";
 import type { TrackingType, ExerciseHistoryEntry } from "../lib/types";
+import { useRequestOptions } from "../hooks/useRequestOptions";
 import ProgressChart from "./ProgressChart";
 
 interface Props {
@@ -26,6 +27,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
   const [editTracking, setEditTracking] = useState<TrackingType>("weight_reps");
   const [editMuscleGroups, setEditMuscleGroups] = useState("");
   const [saving, setSaving] = useState(false);
+  const requestOptions = useRequestOptions();
 
   if (loading || !data) {
     return (
@@ -56,7 +58,7 @@ export default function ExerciseDetailView({ slug, onBack }: Props) {
         equipment: editEquipment,
         tracking: editTracking,
         muscle_groups: editMuscleGroups.split(",").map((s) => s.trim()).filter(Boolean),
-      });
+      }, requestOptions());
       setEditing(false);
       refresh();
     } finally {

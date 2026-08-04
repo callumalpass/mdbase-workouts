@@ -7,7 +7,7 @@
     "https://callumalpass.github.io/mdbase-workouts/"
   ],
   "requirements": {
-    "access": "contract",
+    "access": "full_collection",
     "contracts": [
       {
         "id": "mdbase.workouts.exercise",
@@ -44,7 +44,8 @@
         "records.create",
         "records.update",
         "records.delete",
-        "definitions.contracts.current"
+        "definitions.contracts.current",
+        "definitions.type-pack.apply"
       ]
     }
   },

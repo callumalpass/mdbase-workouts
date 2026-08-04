@@ -10,6 +10,10 @@ export default defineConfig({
     baseURL: process.env.MDBASE_CONNECT_DOGFOOD_APP_URL || "http://localhost:5187",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    ignoreHTTPSErrors: true,
+    launchOptions: {
+      args: ["--host-resolver-rules=MAP host.docker.internal 127.0.0.1"],
+    },
     ...devices["Desktop Chrome"],
   },
 });

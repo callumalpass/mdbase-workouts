@@ -18,6 +18,7 @@ import type {
 } from "./types";
 import type {
   ConnectOutcome,
+  ConnectRequestOptions,
   JsonObject,
   MdbaseConnection,
   QueryInput,
@@ -26,7 +27,7 @@ import type {
   RecordDocument,
 } from "@mdbase-dev/connect";
 import { unwrapConnectOutcome } from "@mdbase-dev/connect";
-import { requireWorkoutConnection } from "./connect";
+import { rememberWorkoutPendingMutation, requireWorkoutConnection } from "./connect";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
@@ -48,8 +49,12 @@ const CONTRACTS: Record<WorkoutType, string> = {
 };
 
 const SOURCE_FRESH_MS = 30_000;
+const READ_TIMEOUT_MS = 10_000;
+const WRITE_TIMEOUT_MS = 20_000;
+let cacheGeneration = 0;
 const sourceCache = new Map<string, {
   collectionId: string;
+  generation: number;
   savedAt?: number;
   value?: QueryRow[];
   pending?: Promise<QueryRow[]>;
@@ -67,9 +72,9 @@ function contract(type: WorkoutType, provider?: string) {
   };
 }
 
-async function createProvider(type: WorkoutType): Promise<string> {
+async function createProvider(type: WorkoutType, options: ConnectRequestOptions = {}): Promise<string> {
   const description = unwrapConnectOutcome(
-    await requireWorkoutConnection().describe(),
+    await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
   );
   const descriptor = description.contracts.find(
     (candidate) =>
@@ -89,58 +94,84 @@ async function createProvider(type: WorkoutType): Promise<string> {
   ).type_name;
 }
 
-async function query(input: QueryInput): Promise<QueryResult> {
-  return validResult(await requireWorkoutConnection().query(input));
+async function query(input: QueryInput, options: ConnectRequestOptions = {}): Promise<QueryResult> {
+  return validResult(await requireWorkoutConnection().query(input, withTimeout(options, READ_TIMEOUT_MS)));
 }
 
 async function read(
   type: WorkoutType,
   path: string,
+  options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
   return validResult(
-    await requireWorkoutConnection().read({ path, contract: contract(type) }),
+    await requireWorkoutConnection().read(
+      { path, contract: contract(type) },
+      withTimeout(options, READ_TIMEOUT_MS),
+    ),
   );
 }
 
 async function create(
   type: WorkoutType,
   input: Omit<Parameters<MdbaseConnection["create"]>[0], "type" | "contract">,
+  options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
-  const provider = await createProvider(type);
-  const result = validResult(
-    await requireWorkoutConnection().create({
-      ...input,
-      contract: contract(type, provider),
-    }),
-  );
-  invalidateConnectApiCache();
-  return result;
+  const provider = await createProvider(type, options);
+  try {
+    return validResult(
+      await requireWorkoutConnection().create({
+        ...input,
+        contract: contract(type, provider),
+      }, withTimeout(options, WRITE_TIMEOUT_MS)),
+    );
+  } catch (error) {
+    rememberWorkoutPendingMutation(error);
+    throw error;
+  } finally {
+    invalidateConnectApiCache();
+  }
 }
 
 async function update(
   type: WorkoutType,
   path: string,
   patch: JsonObject,
+  options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
-  const result = validResult(
-    await requireWorkoutConnection().update({
-      path,
-      patch,
-      contract: contract(type),
-    }),
-  );
-  invalidateConnectApiCache();
-  return result;
+  try {
+    return validResult(
+      await requireWorkoutConnection().update({
+        path,
+        patch,
+        contract: contract(type),
+      }, withTimeout(options, WRITE_TIMEOUT_MS)),
+    );
+  } catch (error) {
+    rememberWorkoutPendingMutation(error);
+    throw error;
+  } finally {
+    invalidateConnectApiCache();
+  }
 }
 
-async function remove(type: WorkoutType, path: string): Promise<void> {
-  validResult(
-    await requireWorkoutConnection().delete({ path, contract: contract(type) }),
-  );
-  invalidateConnectApiCache();
+async function remove(type: WorkoutType, path: string, options: ConnectRequestOptions = {}): Promise<void> {
+  try {
+    validResult(
+      await requireWorkoutConnection().delete(
+        { path, contract: contract(type) },
+        withTimeout(options, WRITE_TIMEOUT_MS),
+      ),
+    );
+  } catch (error) {
+    rememberWorkoutPendingMutation(error);
+    throw error;
+  } finally {
+    invalidateConnectApiCache();
+  }
 }
 
 export function invalidateConnectApiCache(): void {
+  cacheGeneration += 1;
   sourceCache.clear();
   clearWorkoutCache();
 }
@@ -191,6 +222,7 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
 async function rows(
   type: WorkoutType,
   extra: Pick<QueryInput, "limit" | "offset" | "frontmatter_mode"> = {},
+  options: ConnectRequestOptions = {},
 ): Promise<QueryRow[]> {
   const collectionId = requireWorkoutConnection().collectionId;
   const key = `${type}:${JSON.stringify(extra)}`;
@@ -199,18 +231,21 @@ async function rows(
     if (cached.value && cached.savedAt && Date.now() - cached.savedAt < SOURCE_FRESH_MS) {
       return cached.value;
     }
-    if (cached.pending) return cached.pending;
+    if (cached.pending) return awaitWithSignal(cached.pending, options.signal);
   }
 
+  const generation = cacheGeneration;
+  const { signal, ...sharedOptions } = options;
   let entry: {
     collectionId: string;
+    generation: number;
     pending: Promise<QueryRow[]>;
   };
-  const pending = query({ contract: contract(type), ...extra })
+  const pending = query({ contract: contract(type), ...extra }, sharedOptions)
     .then((result) => result.results ?? [])
     .then((value) => {
-      if (sourceCache.get(key) === entry) {
-        sourceCache.set(key, { collectionId, savedAt: Date.now(), value });
+      if (sourceCache.get(key) === entry && generation === cacheGeneration) {
+        sourceCache.set(key, { collectionId, generation, savedAt: Date.now(), value });
       }
       return value;
     })
@@ -218,36 +253,56 @@ async function rows(
       if (sourceCache.get(key) === entry) sourceCache.delete(key);
       throw error;
     });
-  entry = { collectionId, pending };
+  entry = { collectionId, generation, pending };
   sourceCache.set(key, entry);
-  return pending;
+  return awaitWithSignal(pending, signal);
 }
 
-const allExerciseRows = async () =>
-  [...(await rows("exercise", { limit: 20000 }))].sort((left, right) =>
+const allExerciseRows = async (options: ConnectRequestOptions = {}) =>
+  [...(await rows("exercise", { limit: 20000 }, options))].sort((left, right) =>
     String(left.frontmatter?.name ?? "").localeCompare(
       String(right.frontmatter?.name ?? ""),
     ),
   );
-const allSessionRows = async () =>
-  [...(await rows("session", { limit: 20000 }))].sort((left, right) =>
+const allSessionRows = async (options: ConnectRequestOptions = {}) =>
+  [...(await rows("session", { limit: 20000 }, options))].sort((left, right) =>
     String(right.frontmatter?.date ?? "").localeCompare(
       String(left.frontmatter?.date ?? ""),
     ),
   );
-const allQuickLogRows = async () =>
-  [...(await rows("quick-log", { limit: 20000 }))].sort((left, right) =>
+const allQuickLogRows = async (options: ConnectRequestOptions = {}) =>
+  [...(await rows("quick-log", { limit: 20000 }, options))].sort((left, right) =>
     String(right.frontmatter?.logged_at ?? "").localeCompare(
       String(left.frontmatter?.logged_at ?? ""),
     ),
   );
-const allTemplateRows = () => rows("plan-template", { limit: 20000 });
+const allTemplateRows = (options: ConnectRequestOptions = {}) => rows("plan-template", { limit: 20000 }, options);
 
-async function exerciseHistory(slug: string): Promise<ExerciseHistory> {
+function withTimeout(options: ConnectRequestOptions, timeoutMs: number): ConnectRequestOptions {
+  return { ...options, timeoutMs: options.timeoutMs ?? timeoutMs };
+}
+
+function awaitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortError(signal));
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Workout request aborted", "AbortError");
+}
+
+async function exerciseHistory(slug: string, options: ConnectRequestOptions = {}): Promise<ExerciseHistory> {
   const [exerciseValue, sessionRows, quickLogRows] = await Promise.all([
-    read("exercise", `exercises/${slug}.md`),
-    allSessionRows(),
-    allQuickLogRows(),
+    read("exercise", `exercises/${slug}.md`, options),
+    allSessionRows(options),
+    allQuickLogRows(options),
   ]);
   const exercise = operationRecord<Exercise>(exerciseValue, `exercises/${slug}.md`);
   const target = wikilink("exercises", slug);
@@ -297,11 +352,11 @@ async function exerciseHistory(slug: string): Promise<ExerciseHistory> {
   return { exercise, entries, stats };
 }
 
-async function stats(timeZone?: string): Promise<StatsResponse> {
+async function stats(timeZone?: string, options: ConnectRequestOptions = {}): Promise<StatsResponse> {
   const [sessionRows, exerciseRows, quickLogRows] = await Promise.all([
-    allSessionRows(),
-    allExerciseRows(),
-    allQuickLogRows(),
+    allSessionRows(options),
+    allExerciseRows(options),
+    allQuickLogRows(options),
   ]);
   return computeWorkoutStats({
     sessions: sessionRows.map((row) => record<Session>(row)),
@@ -311,10 +366,10 @@ async function stats(timeZone?: string): Promise<StatsResponse> {
   });
 }
 
-async function weeklyStats(timeZone?: string): Promise<WeeklyStatsResponse> {
+async function weeklyStats(timeZone?: string, options: ConnectRequestOptions = {}): Promise<WeeklyStatsResponse> {
   const [sessionRows, quickLogRows] = await Promise.all([
-    allSessionRows(),
-    allQuickLogRows(),
+    allSessionRows(options),
+    allQuickLogRows(options),
   ]);
   return computeWorkoutWeeklyStats({
     sessions: sessionRows.map((row) => record<Session>(row)),
@@ -325,16 +380,16 @@ async function weeklyStats(timeZone?: string): Promise<WeeklyStatsResponse> {
 
 export const connectApi = {
   exercises: {
-    list: async () => (await allExerciseRows()).map((row) => record<Exercise>(row)),
-    get: async (slug: string) => operationRecord<Exercise>(await read("exercise", `exercises/${slug}.md`), `exercises/${slug}.md`),
+    list: async (options: ConnectRequestOptions = {}) => (await allExerciseRows(options)).map((row) => record<Exercise>(row)),
+    get: async (slug: string, options: ConnectRequestOptions = {}) => operationRecord<Exercise>(await read("exercise", `exercises/${slug}.md`, options), `exercises/${slug}.md`),
     history: exerciseHistory,
-    create: async (data: CreateExerciseInput) => {
+    create: async (data: CreateExerciseInput, options: ConnectRequestOptions = {}) => {
       const path = `exercises/${slugify(data.name)}.md`;
-      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }), path);
+      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }, options), path);
     },
-    update: async (slug: string, data: Partial<CreateExerciseInput>) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data), `exercises/${slug}.md`),
-    lastSets: async (slugs: string[]) => {
-      const sessionRows = await allSessionRows();
+    update: async (slug: string, data: Partial<CreateExerciseInput>, options: ConnectRequestOptions = {}) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data, options), `exercises/${slug}.md`),
+    lastSets: async (slugs: string[], options: ConnectRequestOptions = {}) => {
+      const sessionRows = await allSessionRows(options);
       const remaining = new Set(slugs);
       const output: LastSetsResponse = {};
       for (const row of sessionRows) {
@@ -352,22 +407,22 @@ export const connectApi = {
     },
   },
   quickLogs: {
-    list: async (limit = 50) => (await allQuickLogRows()).slice(0, limit).map((row) => record<QuickLog>(row)),
-    create: async (data: CreateQuickLogInput) => {
+    list: async (limit = 50, options: ConnectRequestOptions = {}) => (await allQuickLogRows(options)).slice(0, limit).map((row) => record<QuickLog>(row)),
+    create: async (data: CreateQuickLogInput, options: ConnectRequestOptions = {}) => {
       const now = new Date();
       const path = `quick-logs/${timestamp(now)}.md`;
       const frontmatter = { ...data, exercise: wikilink("exercises", data.exercise), logged_at: now.toISOString() };
-      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }), path);
+      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }, options), path);
     },
   },
   sessions: {
-    list: async (limit = 20, offset = 0) => {
-      const all = await allSessionRows();
+    list: async (limit = 20, offset = 0, options: ConnectRequestOptions = {}) => {
+      const all = await allSessionRows(options);
       const sessions = all.slice(offset, offset + limit).map((row) => record<Session>(row));
       return { sessions, total: all.length, hasMore: offset + sessions.length < all.length };
     },
-    get: async (id: string) => operationRecord<Session>(await read("session", `sessions/${id}.md`), `sessions/${id}.md`),
-    create: async (data: CreateSessionInput) => {
+    get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Session>(await read("session", `sessions/${id}.md`, options), `sessions/${id}.md`),
+    create: async (data: CreateSessionInput, options: ConnectRequestOptions = {}) => {
       const now = new Date();
       const id = timestamp(now);
       const path = `sessions/${id}.md`;
@@ -377,22 +432,22 @@ export const connectApi = {
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
         ...(data.plan ? { plan: wikilink("plans", data.plan) } : {}),
       };
-      const session = operationRecord<Session>(await create("session", { path, frontmatter }), path);
-      if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) });
+      const session = operationRecord<Session>(await create("session", { path, frontmatter }, options), path);
+      if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) }, options);
       return session;
     },
-    update: async (id: string, data: Partial<Session>) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data), `sessions/${id}.md`),
-    delete: async (id: string) => { await remove("session", `sessions/${id}.md`); return { ok: true }; },
+    update: async (id: string, data: Partial<Session>, options: ConnectRequestOptions = {}) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data, options), `sessions/${id}.md`),
+    delete: async (id: string, options: ConnectRequestOptions = {}) => { await remove("session", `sessions/${id}.md`, options); return { ok: true }; },
   },
   plans: {
-    list: async (status?: string) => {
-      const plans = [...(await rows("plan", { limit: 20000 }))]
+    list: async (status?: string, options: ConnectRequestOptions = {}) => {
+      const plans = [...(await rows("plan", { limit: 20000 }, options))]
         .map((row) => record<Plan>(row))
         .filter((plan) => !status || plan.status === status);
       return plans.sort((left, right) => right.date.localeCompare(left.date));
     },
-    get: async (id: string) => operationRecord<Plan>(await read("plan", `plans/${id}.md`), `plans/${id}.md`),
-    create: async (data: CreatePlanInput) => {
+    get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Plan>(await read("plan", `plans/${id}.md`, options), `plans/${id}.md`),
+    create: async (data: CreatePlanInput, options: ConnectRequestOptions = {}) => {
       const date = data.date || dateKey(new Date());
       const id = `${date}-${slugify(data.title)}`;
       const path = `plans/${id}.md`;
@@ -402,29 +457,29 @@ export const connectApi = {
         status: "scheduled",
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
       };
-      return operationRecord<Plan>(await create("plan", { path, frontmatter }), path);
+      return operationRecord<Plan>(await create("plan", { path, frontmatter }, options), path);
     },
-    update: async (id: string, data: Partial<Plan>) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data), `plans/${id}.md`),
+    update: async (id: string, data: Partial<Plan>, options: ConnectRequestOptions = {}) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data, options), `plans/${id}.md`),
   },
   planTemplates: {
-    list: async () => (await allTemplateRows()).map((row) => record<PlanTemplate>(row)),
-    get: async (id: string) => operationRecord<PlanTemplate>(await read("plan-template", `plan-templates/${id}.md`), `plan-templates/${id}.md`),
-    create: async (data: CreatePlanTemplateInput) => {
+    list: async (options: ConnectRequestOptions = {}) => (await allTemplateRows(options)).map((row) => record<PlanTemplate>(row)),
+    get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<PlanTemplate>(await read("plan-template", `plan-templates/${id}.md`, options), `plan-templates/${id}.md`),
+    create: async (data: CreatePlanTemplateInput, options: ConnectRequestOptions = {}) => {
       const path = `plan-templates/${slugify(data.title)}.md`;
       const frontmatter = { ...data, exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })) };
-      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }), path);
+      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }, options), path);
     },
-    update: async (id: string, data: Partial<PlanTemplate>) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data), `plan-templates/${id}.md`),
-    delete: async (id: string) => { await remove("plan-template", `plan-templates/${id}.md`); return { ok: true }; },
+    update: async (id: string, data: Partial<PlanTemplate>, options: ConnectRequestOptions = {}) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data, options), `plan-templates/${id}.md`),
+    delete: async (id: string, options: ConnectRequestOptions = {}) => { await remove("plan-template", `plan-templates/${id}.md`, options); return { ok: true }; },
   },
   stats: { get: stats, weekly: weeklyStats },
-  today: async (timeZone?: string) => {
+  today: async (timeZone?: string, options: ConnectRequestOptions = {}) => {
     const today = dateKey(new Date(), timeZone);
     const [planRows, sessionRows, quickLogRows, templateRows] = await Promise.all([
-      rows("plan", { limit: 20000 }),
-      rows("session", { limit: 20000 }),
-      rows("quick-log", { limit: 20000 }),
-      allTemplateRows(),
+      rows("plan", { limit: 20000 }, options),
+      rows("session", { limit: 20000 }, options),
+      rows("quick-log", { limit: 20000 }, options),
+      allTemplateRows(options),
     ]);
     return {
       date: today,
@@ -435,9 +490,9 @@ export const connectApi = {
     };
   },
   settings: {
-    get: async () => {
+    get: async (options: ConnectRequestOptions = {}) => {
       const description = unwrapConnectOutcome(
-        await requireWorkoutConnection().describe(),
+        await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
       );
       return {
         dataDir: requireWorkoutConnection().collectionId,

@@ -3,6 +3,8 @@ import {
   MdbaseConnect,
   MdbaseConnectError,
   ConnectOutcomeError,
+  unwrapConnectOutcome,
+  type ConnectRequestOptions,
   type MdbaseConnection,
   type MdbaseApplicationSessionSnapshot,
 } from "@mdbase-dev/connect";
@@ -11,20 +13,91 @@ const environment = (import.meta as ImportMeta & {
   env: Record<string, string | boolean | undefined>;
 }).env;
 const serverUrl = String(environment.VITE_MDBASE_CONNECT_URL || "https://connect.mdbase.dev");
+const loopbackUrl = String(environment.VITE_MDBASE_CONNECT_LOOPBACK_URL || "http://127.0.0.1:28485");
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
 const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
 
 export const workoutConnect = new MdbaseConnect({
   serverUrl,
+  loopbackUrl,
   manifest,
   redirectUri: appRoot.href,
 });
 
-export const workoutSession = workoutConnect.createApplicationSession({
+export const workoutSession = workoutConnect.application({
   selection: new MdbaseBrowserSelection({
     fallbackPath: appRoot.pathname,
   }),
 });
+
+export interface PendingWorkoutMutation {
+  requestId: string;
+  operation: string;
+}
+
+let pendingWorkoutMutation: PendingWorkoutMutation | null = null;
+const pendingMutationListeners = new Set<() => void>();
+
+export function workoutPendingMutationSnapshot(): PendingWorkoutMutation | null {
+  return pendingWorkoutMutation;
+}
+
+export function subscribeToWorkoutPendingMutation(listener: () => void): () => void {
+  pendingMutationListeners.add(listener);
+  return () => pendingMutationListeners.delete(listener);
+}
+
+export function refreshWorkoutPendingMutation(): void {
+  const pending = workoutConnection()?.pendingMutations()[0];
+  publishPendingMutation(pending ? {
+    requestId: pending.requestId,
+    operation: pending.operation,
+  } : null);
+}
+
+export function rememberWorkoutPendingMutation(error: unknown): boolean {
+  const problem = error instanceof ConnectOutcomeError
+    ? error.problem
+    : error instanceof MdbaseConnectError
+      ? error.problem
+      : null;
+  const requestId = (problem?.details as { request_id?: unknown } | undefined)?.request_id;
+  if (problem?.operation_outcome !== "unknown" || typeof requestId !== "string") return false;
+  const connection = workoutConnection();
+  const pending = connection?.pendingMutation(requestId)
+    ?? connection?.pendingMutations().find((candidate) => candidate.requestId === requestId);
+  publishPendingMutation({
+    requestId,
+    operation: pending?.operation ?? "write",
+  });
+  return true;
+}
+
+export async function recoverWorkoutPendingMutation(
+  options: ConnectRequestOptions = {},
+): Promise<void> {
+  const summary = pendingWorkoutMutation;
+  if (!summary) return;
+  const pending = requireWorkoutConnection().pendingMutation(summary.requestId);
+  if (!pending) {
+    refreshWorkoutPendingMutation();
+    throw new Error("That pending workout write is no longer available.");
+  }
+  try {
+    unwrapConnectOutcome(await pending.recover({ timeoutMs: 20_000, ...options }));
+    refreshWorkoutPendingMutation();
+  } catch (error) {
+    rememberWorkoutPendingMutation(error);
+    throw error;
+  }
+}
+
+function publishPendingMutation(next: PendingWorkoutMutation | null): void {
+  if (pendingWorkoutMutation?.requestId === next?.requestId
+      && pendingWorkoutMutation?.operation === next?.operation) return;
+  pendingWorkoutMutation = next;
+  for (const listener of pendingMutationListeners) listener();
+}
 
 export function workoutSnapshot(): MdbaseApplicationSessionSnapshot {
   return workoutSession.getSnapshot();
@@ -59,6 +132,9 @@ export function connectErrorMessage(error: unknown): string {
       ? error.problem.code
       : error.code;
     if (code === "connector_offline") return "The computer holding this collection is offline.";
+    if (error.problem.recovery === "upgrade_connector") {
+      return "Update mdbase connect on the collection computer before continuing.";
+    }
     if (code === "not_authorized" || code === "authorization_expired") {
       return "This connection has expired. Choose the collection again.";
     }

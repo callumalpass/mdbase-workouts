@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  recoverWorkoutPendingMutation,
+  refreshWorkoutPendingMutation,
   workoutConnect,
+  workoutPendingMutationSnapshot,
   workoutSession,
 } from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
@@ -31,6 +34,7 @@ const workoutOperations = operationsForApplicationCapabilities({
     "records.update",
     "records.delete",
     "definitions.contracts.current",
+    "definitions.type-pack.apply",
   ],
 });
 
@@ -49,6 +53,10 @@ const boundConnection = {
   update: vi.fn(),
   delete: vi.fn(),
   describe: vi.fn(),
+  assessTypePack: vi.fn(async () => connectSuccess({ status: "current" } as never)),
+  applyTypePack: vi.fn(),
+  pendingMutation: vi.fn(),
+  pendingMutations: vi.fn(() => []),
 } as unknown as MdbaseConnection;
 
 beforeAll(async () => {
@@ -106,14 +114,8 @@ beforeEach(() => {
     displayName: "Test workouts",
     operations: workoutOperations,
     scope: {
-      contracts: [
-        contractDescriptor("exercise"),
-        contractDescriptor("plan"),
-        contractDescriptor("plan-template"),
-        contractDescriptor("quick-log"),
-        contractDescriptor("session"),
-      ],
-      access: "contract",
+      contracts: [],
+      access: "full_collection",
     },
     route: "relay",
     authority: { kind: "connector", durability: "computer" },
@@ -145,6 +147,8 @@ beforeEach(() => {
       contractDescriptor("session"),
     ],
   }));
+  vi.spyOn(boundConnection, "pendingMutations").mockReturnValue([]);
+  refreshWorkoutPendingMutation();
 });
 
 afterEach(() => {
@@ -179,7 +183,7 @@ describe("Connect workout API", () => {
         version: "1.0.0",
       },
       limit: 20000,
-    });
+    }, { timeoutMs: 10_000 });
   });
 
   it("uses the canonical patch input for updates", async () => {
@@ -198,7 +202,7 @@ describe("Connect workout API", () => {
         id: "mdbase.workouts.exercise",
         version: "1.0.0",
       },
-    });
+    }, { timeoutMs: 20_000 });
   });
 
   it("selects one exact provider when creating into a contract with several implementations", async () => {
@@ -244,7 +248,7 @@ describe("Connect workout API", () => {
         version: "1.0.0",
         type: "exercise",
       },
-    });
+    }, { timeoutMs: 20_000 });
   });
 
   it("surfaces collection diagnostics", async () => {
@@ -280,6 +284,29 @@ describe("Connect workout API", () => {
       "mdbase.workouts.quick-log",
       "mdbase.workouts.session",
     ]);
+  });
+
+  it("lets one view cancel without aborting a shared bounded collection scan", async () => {
+    let resolveQuery!: (value: Awaited<ReturnType<typeof boundConnection.query>>) => void;
+    const pendingQuery = new Promise<Awaited<ReturnType<typeof boundConnection.query>>>((resolve) => {
+      resolveQuery = resolve;
+    });
+    const query = vi.spyOn(boundConnection, "query").mockReturnValue(pendingQuery);
+    const first = new AbortController();
+    const second = new AbortController();
+
+    const cancelled = connectApi.exercises.list({ signal: first.signal });
+    const retained = connectApi.exercises.list({ signal: second.signal });
+    first.abort("Exercise list closed");
+    resolveQuery(connectSuccess({
+      results: [queryRecord("exercises/bench-press.md", { name: "Bench Press" }, ["exercise"])],
+      meta: { total_count: 1, has_more: false },
+    }));
+
+    await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    await expect(retained).resolves.toEqual([expect.objectContaining({ name: "Bench Press" })]);
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(expect.anything(), { timeoutMs: 10_000 });
   });
 
   it("keeps a cold Today startup to five contract queries", async () => {
@@ -341,6 +368,50 @@ describe("Connect workout API", () => {
     await expect(freshResult).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
     await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
     expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a response-lost write by its exact durable request ID", async () => {
+    const requestId = "workout-write-request";
+    let recovered = false;
+    const recover = vi.fn(async () => {
+      recovered = true;
+      return connectSuccess(recordDocument(
+        "exercises/bench-press.md",
+        { name: "Paused Bench Press" },
+        ["exercise"],
+      ));
+    });
+    vi.spyOn(boundConnection, "pendingMutation").mockImplementation((candidate) =>
+      candidate === requestId ? ({
+        requestId,
+        operation: "update",
+        fingerprint: "fingerprint",
+        status: "outcome_unknown",
+        createdAt: new Date().toISOString(),
+        recover,
+      } as never) : null);
+    vi.spyOn(boundConnection, "pendingMutations").mockImplementation(() => recovered ? [] : ([{
+      requestId,
+      operation: "update",
+      fingerprint: "fingerprint",
+      status: "outcome_unknown",
+      createdAt: new Date().toISOString(),
+      recover,
+    }] as never));
+    const update = vi.spyOn(boundConnection, "update").mockResolvedValue(connectFailure(connectProblem(
+      "operation_outcome_unknown",
+      "The workout write may have completed.",
+      { operationOutcome: "unknown", details: { request_id: requestId } },
+    )));
+
+    await expect(connectApi.exercises.update("bench-press", { name: "Paused Bench Press" }))
+      .rejects.toMatchObject({ problem: { details: { request_id: requestId } } });
+    expect(workoutPendingMutationSnapshot()).toEqual({ requestId, operation: "update" });
+
+    await recoverWorkoutPendingMutation();
+    expect(update).toHaveBeenCalledOnce();
+    expect(recover).toHaveBeenCalledWith({ timeoutMs: 20_000 });
+    expect(workoutPendingMutationSnapshot()).toBeNull();
   });
 });
 
