@@ -26,12 +26,12 @@ import type {
   QueryResult,
   RecordDocument,
 } from "@mdbase-dev/connect";
-import { unwrapConnectOutcome } from "@mdbase-dev/connect";
 import { rememberWorkoutPendingMutation, requireWorkoutConnection } from "./connect";
+import { requireConnectOutcome } from "./connect-outcome";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
-type QueryRow = QueryRecord<JsonObject> & JsonObject;
+type QueryRow = QueryRecord<JsonObject>;
 type WorkoutType =
   | "exercise"
   | "plan"
@@ -61,7 +61,7 @@ const sourceCache = new Map<string, {
 }>();
 
 function validResult<Result>(outcome: ConnectOutcome<Result>): Result {
-  return unwrapConnectOutcome(outcome);
+  return requireConnectOutcome(outcome);
 }
 
 function contract(type: WorkoutType, provider?: string) {
@@ -73,7 +73,7 @@ function contract(type: WorkoutType, provider?: string) {
 }
 
 async function createProvider(type: WorkoutType, options: ConnectRequestOptions = {}): Promise<string> {
-  const description = unwrapConnectOutcome(
+  const description = requireConnectOutcome(
     await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
   );
   const descriptor = description.contracts.find(
@@ -87,11 +87,11 @@ async function createProvider(type: WorkoutType, options: ConnectRequestOptions 
     );
   }
   const providers = [...descriptor.implementations].sort((left, right) =>
-    left.type_name.localeCompare(right.type_name)
+    left.typeName.localeCompare(right.typeName)
   );
   return (
-    providers.find((provider) => provider.type_name === type) ?? providers[0]
-  ).type_name;
+    providers.find((provider) => provider.typeName === type) ?? providers[0]
+  ).typeName;
 }
 
 async function query(input: QueryInput, options: ConnectRequestOptions = {}): Promise<QueryResult> {
@@ -221,7 +221,7 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
 
 async function rows(
   type: WorkoutType,
-  extra: Pick<QueryInput, "limit" | "offset" | "frontmatter_mode"> = {},
+  extra: Pick<QueryInput, "limit" | "offset" | "frontmatterMode"> = {},
   options: ConnectRequestOptions = {},
 ): Promise<QueryRow[]> {
   const collectionId = requireWorkoutConnection().collectionId;
@@ -491,13 +491,13 @@ export const connectApi = {
   },
   settings: {
     get: async (options: ConnectRequestOptions = {}) => {
-      const description = unwrapConnectOutcome(
+      const description = requireConnectOutcome(
         await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
       );
       return {
         dataDir: requireWorkoutConnection().collectionId,
         configDataDir: "mdbase connect",
-        collectionName: description.display_name,
+        collectionName: description.displayName,
       };
     },
     update: async () => { throw new Error("Collection folders are managed in mdbase connect."); },

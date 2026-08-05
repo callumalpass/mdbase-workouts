@@ -15,13 +15,9 @@ import type {
   QueryRecord,
   RecordDocument,
 } from "@mdbase-dev/connect";
-import {
-  connectFailure,
-  connectProblem,
-  connectSuccess,
-  unwrapConnectOutcome,
-} from "@mdbase-dev/connect";
+import { connectFailure, connectProblem, connectSuccess } from "@mdbase-dev/connect-testing";
 import { operationsForApplicationCapabilities } from "@mdbase-dev/connect-protocol";
+import { requireConnectOutcome } from "./connect-outcome";
 import workoutManifest from "../../public/.well-known/mdbase-app.json";
 
 const workoutOperations = operationsForApplicationCapabilities({
@@ -34,7 +30,7 @@ const workoutOperations = operationsForApplicationCapabilities({
     "records.update",
     "records.delete",
     "definitions.contracts.current",
-    "definitions.type-pack.apply",
+    "collection.setup.apply",
   ],
 });
 
@@ -53,6 +49,8 @@ const boundConnection = {
   update: vi.fn(),
   delete: vi.fn(),
   describe: vi.fn(),
+  assessCollectionSetup: vi.fn(async () => connectSuccess({ status: "current" } as never)),
+  applyCollectionSetup: vi.fn(),
   assessTypePack: vi.fn(async () => connectSuccess({ status: "current" } as never)),
   applyTypePack: vi.fn(),
   pendingMutation: vi.fn(),
@@ -60,10 +58,18 @@ const boundConnection = {
 } as unknown as MdbaseConnection;
 
 beforeAll(async () => {
+  vi.spyOn(workoutConnect, "register").mockResolvedValue(connectSuccess({
+    id: "workouts-test-application",
+    family_identity: "bundle:dev.mdbase.workouts",
+    manifest_digest: "0".repeat(64),
+    name: "MDBase Workouts",
+    homepage: "https://callumalpass.github.io/mdbase-workouts/",
+    requirements: workoutManifest.requirements as NonNullable<MdbaseAppManifest["requirements"]>,
+  }));
   vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
     connectSuccess(workoutManifest as MdbaseAppManifest),
   );
-  unwrapConnectOutcome(await workoutSession.start());
+  requireConnectOutcome(await workoutSession.start());
 });
 
 afterAll(() => workoutSession.destroy());
@@ -77,7 +83,7 @@ function queryRecord(
   return {
     path,
     frontmatter,
-    effective_frontmatter: frontmatter,
+    effectiveFrontmatter: frontmatter,
     types,
     file: {
       path,
@@ -99,7 +105,7 @@ function recordDocument(
     path,
     revision: "revision-2",
     frontmatter,
-    effective_frontmatter: frontmatter,
+    effectiveFrontmatter: frontmatter,
     types,
     body: "",
     file,
@@ -128,16 +134,16 @@ beforeEach(() => {
   vi.spyOn(boundConnection, "info").mockReturnValue(info);
   vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
   vi.spyOn(workoutConnect, "connection").mockReturnValue(boundConnection);
-  unwrapConnectOutcome(
+  requireConnectOutcome(
     workoutSession.select(info.collectionId, { history: "replace" }),
   );
   vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
-    protocol_version: 1,
-    collection_id: "workouts-test",
-    display_name: "Test workouts",
-    spec_version: "0.3.0",
+    protocolVersion: 1,
+    collectionId: "workouts-test",
+    displayName: "Test workouts",
+    specVersion: "0.3.0",
     operations: workoutOperations,
-    change_cursor: 0,
+    changeCursor: 0,
     types: [],
     contracts: [
       contractDescriptor("exercise"),
@@ -170,7 +176,7 @@ describe("Connect workout API", () => {
           },
           ["exercise"],
         )],
-        meta: { total_count: 1, has_more: false },
+        meta: { totalCount: 1, hasMore: false },
     }));
 
     await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({
@@ -207,12 +213,12 @@ describe("Connect workout API", () => {
 
   it("selects one exact provider when creating into a contract with several implementations", async () => {
     vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
-      protocol_version: 1,
-      collection_id: "workouts-test",
-      display_name: "Test workouts",
-      spec_version: "0.3.0",
+      protocolVersion: 1,
+      collectionId: "workouts-test",
+      displayName: "Test workouts",
+      specVersion: "0.3.0",
       operations: workoutOperations,
-      change_cursor: 0,
+      changeCursor: 0,
       types: [],
       contracts: [{
         ...contractDescriptor("exercise"),
@@ -270,7 +276,7 @@ describe("Connect workout API", () => {
   it("shares collection scans between dashboard stats", async () => {
     const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
-        meta: { total_count: 0, has_more: false },
+        meta: { totalCount: 0, hasMore: false },
     }));
 
     await Promise.all([
@@ -300,7 +306,7 @@ describe("Connect workout API", () => {
     first.abort("Exercise list closed");
     resolveQuery(connectSuccess({
       results: [queryRecord("exercises/bench-press.md", { name: "Bench Press" }, ["exercise"])],
-      meta: { total_count: 1, has_more: false },
+      meta: { totalCount: 1, hasMore: false },
     }));
 
     await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
@@ -312,7 +318,7 @@ describe("Connect workout API", () => {
   it("keeps a cold Today startup to five contract queries", async () => {
     const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
-        meta: { total_count: 0, has_more: false },
+        meta: { totalCount: 0, hasMore: false },
     }));
 
     await Promise.all([
@@ -349,7 +355,7 @@ describe("Connect workout API", () => {
             { name: "Fresh" },
             ["exercise"],
           )],
-          meta: { total_count: 1, has_more: false },
+          meta: { totalCount: 1, hasMore: false },
       }));
 
     const staleResult = connectApi.exercises.list();
@@ -361,7 +367,7 @@ describe("Connect workout API", () => {
           { name: "Stale" },
           ["exercise"],
         )],
-        meta: { total_count: 1, has_more: false },
+        meta: { totalCount: 1, hasMore: false },
     }));
 
     await expect(staleResult).resolves.toEqual([expect.objectContaining({ name: "Stale" })]);
@@ -417,8 +423,8 @@ describe("Connect workout API", () => {
 
 function implementation(typeName: string) {
   return {
-    type_name: typeName,
-    type_version: 1,
+    typeName: typeName,
+    typeVersion: 1,
     digest: `sha256:${typeName}`,
     fields: {},
   };
@@ -427,7 +433,7 @@ function implementation(typeName: string) {
 function contractDescriptor(type: string) {
   return {
     id: `mdbase.workouts.${type}`,
-    contract_type: "record" as const,
+    contractType: "record" as const,
     version: "1.0.0",
     digest: `sha256:${type}`,
     schema: {},

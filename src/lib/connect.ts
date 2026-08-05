@@ -1,13 +1,11 @@
 import {
   MdbaseBrowserSelection,
   MdbaseConnect,
-  MdbaseConnectError,
-  ConnectOutcomeError,
-  unwrapConnectOutcome,
   type ConnectRequestOptions,
   type MdbaseConnection,
   type MdbaseApplicationSessionSnapshot,
 } from "@mdbase-dev/connect";
+import { connectProblemFromError, requireConnectOutcome } from "./connect-outcome";
 
 const environment = (import.meta as ImportMeta & {
   env: Record<string, string | boolean | undefined>;
@@ -56,11 +54,7 @@ export function refreshWorkoutPendingMutation(): void {
 }
 
 export function rememberWorkoutPendingMutation(error: unknown): boolean {
-  const problem = error instanceof ConnectOutcomeError
-    ? error.problem
-    : error instanceof MdbaseConnectError
-      ? error.problem
-      : null;
+  const problem = connectProblemFromError(error);
   const requestId = (problem?.details as { request_id?: unknown } | undefined)?.request_id;
   if (problem?.operation_outcome !== "unknown" || typeof requestId !== "string") return false;
   const connection = workoutConnection();
@@ -84,7 +78,7 @@ export async function recoverWorkoutPendingMutation(
     throw new Error("That pending workout write is no longer available.");
   }
   try {
-    unwrapConnectOutcome(await pending.recover({ timeoutMs: 20_000, ...options }));
+    requireConnectOutcome(await pending.recover({ timeoutMs: 20_000, ...options }));
     refreshWorkoutPendingMutation();
   } catch (error) {
     rememberWorkoutPendingMutation(error);
@@ -124,15 +118,11 @@ export function connectIsRequired(): boolean {
 }
 
 export function connectErrorMessage(error: unknown): string {
-  if (
-    error instanceof MdbaseConnectError ||
-    error instanceof ConnectOutcomeError
-  ) {
-    const code = error instanceof ConnectOutcomeError
-      ? error.problem.code
-      : error.code;
+  const problem = connectProblemFromError(error);
+  if (problem) {
+    const code = problem.code;
     if (code === "connector_offline") return "The computer holding this collection is offline.";
-    if (error.problem.recovery === "upgrade_connector") {
+    if (problem.recovery === "upgrade_connector") {
       return "Update mdbase connect on the collection computer before continuing.";
     }
     if (code === "not_authorized" || code === "authorization_expired") {

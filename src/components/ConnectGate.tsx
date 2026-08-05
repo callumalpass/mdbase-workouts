@@ -17,11 +17,8 @@ import {
   workoutSnapshot,
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
-import {
-  unwrapConnectOutcome,
-  type ConnectRequestOptions,
-  type MdbaseConnection,
-} from "@mdbase-dev/connect";
+import type { ConnectRequestOptions, MdbaseConnection } from "@mdbase-dev/connect";
+import { requireConnectOutcome } from "../lib/connect-outcome";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -45,7 +42,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     // unmount independently (including React StrictMode's probe mount), so only
     // detach this consumer; keep the shared, bounded startup alive.
     void workoutSession.start({ timeoutMs: 15_000 })
-      .then(unwrapConnectOutcome)
+      .then(requireConnectOutcome)
       .catch((reason: unknown) => {
         if (active) setError(connectErrorMessage(reason));
       })
@@ -78,7 +75,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setOpening(true);
     setError("");
     try {
-      unwrapConnectOutcome(await workoutSession.authorize("choose", requestOptions(15_000)));
+      requireConnectOutcome(await workoutSession.authorize("choose", requestOptions(15_000)));
     } catch (reason) {
       setError(connectErrorMessage(reason));
     } finally {
@@ -90,7 +87,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setOpening(true);
     setError("");
     try {
-      unwrapConnectOutcome(await workoutSession.authorize("selected", requestOptions(15_000)));
+      requireConnectOutcome(await workoutSession.authorize("selected", requestOptions(15_000)));
     } catch (reason) {
       setError(connectErrorMessage(reason));
     } finally {
@@ -98,11 +95,11 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     }
   }
 
-  async function applyDefinitions() {
+  async function applyCollectionSetup() {
     setApplyingDefinitions(true);
     setError("");
     try {
-      unwrapConnectOutcome(await workoutSession.applyDefinitionUpdates(requestOptions(30_000)));
+      requireConnectOutcome(await workoutSession.applyCollectionSetup(requestOptions(30_000)));
     } catch (reason) {
       setError(connectErrorMessage(reason));
     } finally {
@@ -121,7 +118,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setError("");
     try {
       invalidateConnectApiCache();
-      unwrapConnectOutcome(
+      requireConnectOutcome(
         workoutSession.select(collectionId, { history: "replace" }),
       );
     } catch (reason) {
@@ -141,10 +138,10 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         ? snapshot.problem.message
         : "";
   const displayedError = error || unavailableMessage;
-  const reviewingDefinitions = snapshot.status === "definition_review_required";
-  const checkingDefinitions = snapshot.status === "checking_definitions";
+  const reviewingDefinitions = snapshot.status === "setup_review_required";
+  const checkingDefinitions = snapshot.status === "checking_setup";
   const definitionsApplicable = !reviewingDefinitions
-    || snapshot.updates.every((update) => update.canApply);
+    || snapshot.update.canApply;
   const busy = starting || opening || applyingDefinitions || checkingDefinitions;
 
   return (
@@ -196,7 +193,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
                 Workouts needs to install or update its portable record definitions before opening this collection.
               </p>
               <ul className="mt-2 space-y-1 font-mono text-xs text-faded">
-                {snapshot.updates.map((update) => (
+                {snapshot.update.typePacks.map((update) => (
                   <li key={update.id}>{update.name}: {update.status}</li>
                 ))}
               </ul>
@@ -231,7 +228,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             disabled={busy || !definitionsApplicable}
             onClick={() => void (
               reviewingDefinitions
-                ? applyDefinitions()
+                ? applyCollectionSetup()
                 : snapshot.status === "authorization_required"
                 ? reviewAuthorization()
                 : beginConnection()

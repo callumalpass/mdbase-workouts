@@ -71,6 +71,11 @@ async function pairIsolatedConnector(page: import("@playwright/test").Page): Pro
     if (exitCode !== 0 && !loopbackPort) {
       throw new Error(`Connector pairing exited with ${exitCode}: ${output}`);
     }
+    // `connect login` does not return until its replacement daemon answers a
+    // ready probe. Give that process a brief stability window so a daemon that
+    // only lived long enough to bind the control socket is not mistaken for a
+    // successful restart (for example, if its loopback port is already taken).
+    await new Promise((resolve) => setTimeout(resolve, 500));
     try {
       await connector(["status"]);
     } catch {

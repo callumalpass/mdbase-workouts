@@ -7,7 +7,7 @@ import {
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
 import { clearWorkoutCache } from "../lib/workout-cache";
-import { unwrapConnectOutcome } from "@mdbase-dev/connect";
+import { requireConnectOutcome } from "../lib/connect-outcome";
 
 interface Props {
   open: boolean;
@@ -71,7 +71,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
     setError("");
     try {
       const outcome = await connection?.requestDirectAccess();
-      const status = outcome ? unwrapConnectOutcome(outcome) : undefined;
+      const status = outcome ? requireConnectOutcome(outcome) : undefined;
       if (status === "denied") {
         setError("Local network access is blocked in this browser.");
       } else if (status === "unavailable") {
@@ -151,7 +151,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
                 type="button"
                 onClick={() => {
                   invalidateConnectApiCache();
-                  unwrapConnectOutcome(
+                  requireConnectOutcome(
                     workoutSession.select(connection.collectionId, {
                       history: "replace",
                     }),
@@ -168,7 +168,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
               onClick={() =>
                 void workoutSession
                   .authorize("choose")
-                  .then(unwrapConnectOutcome)
+                  .then(requireConnectOutcome)
               }
               className="mt-2 block w-full border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper"
             >

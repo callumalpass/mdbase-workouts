@@ -87,7 +87,7 @@ await writeFile(target, `${JSON.stringify({
         "records.update",
         "records.delete",
         "definitions.contracts.current",
-        "definitions.type-pack.apply",
+        "collection.setup.apply",
       ],
     },
   },
