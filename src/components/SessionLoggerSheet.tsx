@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { parseWikilink, slugToName, pathToSlug } from "../lib/utils";
 import { haptics } from "../lib/haptics";
 import { useLocalStorage, useLastUsed } from "../hooks/useLocalStorage";
+import { useRequestOptions } from "../hooks/useRequestOptions";
 import SuccessStamp from "./SuccessStamp";
 import CountdownTimer from "./CountdownTimer";
 import { emptySet, formatElapsed, formatLastSets, type SetEntry } from "./sessionLoggerHelpers";
@@ -58,6 +59,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   const [showRestPicker, setShowRestPicker] = useState(false);
   const restDurations = [30, 60, 90, 120, 180];
   const [lastSessions, setLastSessions] = useState<Record<string, LastSessionData>>({});
+  const requestOptions = useRequestOptions(20_000, source != null);
 
   useEffect(() => {
     if (!source) return;
@@ -122,8 +124,12 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
   // Fetch last session data once exercise logs are ready
   useEffect(() => {
     if (exerciseLogs.length === 0) return;
+    const controller = new AbortController();
     const slugs = exerciseLogs.map((l) => l.slug);
-    api.exercises.lastSets(slugs).then(setLastSessions).catch(() => {});
+    api.exercises.lastSets(slugs, { signal: controller.signal, timeoutMs: 10_000 })
+      .then(setLastSessions)
+      .catch(() => {});
+    return () => controller.abort("Workout session changed");
   }, [exerciseLogs.length]);
 
   // Persist session to localStorage on changes
@@ -280,7 +286,7 @@ export default function SessionLoggerSheet({ plan, template, exercises: allExerc
         ...(finalDuration != null && { duration_minutes: finalDuration }),
         ...(rating > 0 && { rating }),
         ...(notes.trim() && { notes: notes.trim() }),
-      });
+      }, requestOptions());
       localStorage.removeItem(SESSION_KEY);
       setShowStamp(true);
     } catch (err) {

@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  recoverWorkoutPendingMutation,
+  refreshWorkoutPendingMutation,
   workoutConnect,
+  workoutPendingMutationSnapshot,
   workoutSession,
 } from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
@@ -12,13 +15,9 @@ import type {
   QueryRecord,
   RecordDocument,
 } from "@mdbase-dev/connect";
-import {
-  connectFailure,
-  connectProblem,
-  connectSuccess,
-  unwrapConnectOutcome,
-} from "@mdbase-dev/connect";
+import { connectFailure, connectProblem, connectSuccess } from "@mdbase-dev/connect-testing";
 import { operationsForApplicationCapabilities } from "@mdbase-dev/connect-protocol";
+import { requireConnectOutcome } from "./connect-outcome";
 import workoutManifest from "../../public/.well-known/mdbase-app.json";
 
 const workoutOperations = operationsForApplicationCapabilities({
@@ -31,6 +30,7 @@ const workoutOperations = operationsForApplicationCapabilities({
     "records.update",
     "records.delete",
     "definitions.contracts.current",
+    "collection.setup.apply",
   ],
 });
 
@@ -49,13 +49,27 @@ const boundConnection = {
   update: vi.fn(),
   delete: vi.fn(),
   describe: vi.fn(),
+  assessCollectionSetup: vi.fn(async () => connectSuccess({ status: "current" } as never)),
+  applyCollectionSetup: vi.fn(),
+  assessTypePack: vi.fn(async () => connectSuccess({ status: "current" } as never)),
+  applyTypePack: vi.fn(),
+  pendingMutation: vi.fn(),
+  pendingMutations: vi.fn(() => []),
 } as unknown as MdbaseConnection;
 
 beforeAll(async () => {
+  vi.spyOn(workoutConnect, "register").mockResolvedValue(connectSuccess({
+    id: "workouts-test-application",
+    family_identity: "bundle:dev.mdbase.workouts",
+    manifest_digest: "0".repeat(64),
+    name: "MDBase Workouts",
+    homepage: "https://callumalpass.github.io/mdbase-workouts/",
+    requirements: workoutManifest.requirements as NonNullable<MdbaseAppManifest["requirements"]>,
+  }));
   vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
     connectSuccess(workoutManifest as MdbaseAppManifest),
   );
-  unwrapConnectOutcome(await workoutSession.start());
+  requireConnectOutcome(await workoutSession.start());
 });
 
 afterAll(() => workoutSession.destroy());
@@ -69,7 +83,7 @@ function queryRecord(
   return {
     path,
     frontmatter,
-    effective_frontmatter: frontmatter,
+    effectiveFrontmatter: frontmatter,
     types,
     file: {
       path,
@@ -91,7 +105,7 @@ function recordDocument(
     path,
     revision: "revision-2",
     frontmatter,
-    effective_frontmatter: frontmatter,
+    effectiveFrontmatter: frontmatter,
     types,
     body: "",
     file,
@@ -106,14 +120,8 @@ beforeEach(() => {
     displayName: "Test workouts",
     operations: workoutOperations,
     scope: {
-      contracts: [
-        contractDescriptor("exercise"),
-        contractDescriptor("plan"),
-        contractDescriptor("plan-template"),
-        contractDescriptor("quick-log"),
-        contractDescriptor("session"),
-      ],
-      access: "contract",
+      contracts: [],
+      access: "full_collection",
     },
     route: "relay",
     authority: { kind: "connector", durability: "computer" },
@@ -126,16 +134,16 @@ beforeEach(() => {
   vi.spyOn(boundConnection, "info").mockReturnValue(info);
   vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
   vi.spyOn(workoutConnect, "connection").mockReturnValue(boundConnection);
-  unwrapConnectOutcome(
+  requireConnectOutcome(
     workoutSession.select(info.collectionId, { history: "replace" }),
   );
   vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
-    protocol_version: 1,
-    collection_id: "workouts-test",
-    display_name: "Test workouts",
-    spec_version: "0.3.0",
+    protocolVersion: 1,
+    collectionId: "workouts-test",
+    displayName: "Test workouts",
+    specVersion: "0.3.0",
     operations: workoutOperations,
-    change_cursor: 0,
+    changeCursor: 0,
     types: [],
     contracts: [
       contractDescriptor("exercise"),
@@ -145,6 +153,8 @@ beforeEach(() => {
       contractDescriptor("session"),
     ],
   }));
+  vi.spyOn(boundConnection, "pendingMutations").mockReturnValue([]);
+  refreshWorkoutPendingMutation();
 });
 
 afterEach(() => {
@@ -166,7 +176,7 @@ describe("Connect workout API", () => {
           },
           ["exercise"],
         )],
-        meta: { total_count: 1, has_more: false },
+        meta: { totalCount: 1, hasMore: false },
     }));
 
     await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({
@@ -179,7 +189,7 @@ describe("Connect workout API", () => {
         version: "1.0.0",
       },
       limit: 20000,
-    });
+    }, { timeoutMs: 10_000 });
   });
 
   it("uses the canonical patch input for updates", async () => {
@@ -198,17 +208,17 @@ describe("Connect workout API", () => {
         id: "mdbase.workouts.exercise",
         version: "1.0.0",
       },
-    });
+    }, { timeoutMs: 20_000 });
   });
 
   it("selects one exact provider when creating into a contract with several implementations", async () => {
     vi.spyOn(boundConnection, "describe").mockResolvedValue(connectSuccess({
-      protocol_version: 1,
-      collection_id: "workouts-test",
-      display_name: "Test workouts",
-      spec_version: "0.3.0",
+      protocolVersion: 1,
+      collectionId: "workouts-test",
+      displayName: "Test workouts",
+      specVersion: "0.3.0",
       operations: workoutOperations,
-      change_cursor: 0,
+      changeCursor: 0,
       types: [],
       contracts: [{
         ...contractDescriptor("exercise"),
@@ -244,7 +254,7 @@ describe("Connect workout API", () => {
         version: "1.0.0",
         type: "exercise",
       },
-    });
+    }, { timeoutMs: 20_000 });
   });
 
   it("surfaces collection diagnostics", async () => {
@@ -266,7 +276,7 @@ describe("Connect workout API", () => {
   it("shares collection scans between dashboard stats", async () => {
     const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
-        meta: { total_count: 0, has_more: false },
+        meta: { totalCount: 0, hasMore: false },
     }));
 
     await Promise.all([
@@ -282,10 +292,33 @@ describe("Connect workout API", () => {
     ]);
   });
 
+  it("lets one view cancel without aborting a shared bounded collection scan", async () => {
+    let resolveQuery!: (value: Awaited<ReturnType<typeof boundConnection.query>>) => void;
+    const pendingQuery = new Promise<Awaited<ReturnType<typeof boundConnection.query>>>((resolve) => {
+      resolveQuery = resolve;
+    });
+    const query = vi.spyOn(boundConnection, "query").mockReturnValue(pendingQuery);
+    const first = new AbortController();
+    const second = new AbortController();
+
+    const cancelled = connectApi.exercises.list({ signal: first.signal });
+    const retained = connectApi.exercises.list({ signal: second.signal });
+    first.abort("Exercise list closed");
+    resolveQuery(connectSuccess({
+      results: [queryRecord("exercises/bench-press.md", { name: "Bench Press" }, ["exercise"])],
+      meta: { totalCount: 1, hasMore: false },
+    }));
+
+    await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    await expect(retained).resolves.toEqual([expect.objectContaining({ name: "Bench Press" })]);
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(expect.anything(), { timeoutMs: 10_000 });
+  });
+
   it("keeps a cold Today startup to five contract queries", async () => {
     const query = vi.spyOn(boundConnection, "query").mockResolvedValue(connectSuccess({
         results: [],
-        meta: { total_count: 0, has_more: false },
+        meta: { totalCount: 0, hasMore: false },
     }));
 
     await Promise.all([
@@ -322,7 +355,7 @@ describe("Connect workout API", () => {
             { name: "Fresh" },
             ["exercise"],
           )],
-          meta: { total_count: 1, has_more: false },
+          meta: { totalCount: 1, hasMore: false },
       }));
 
     const staleResult = connectApi.exercises.list();
@@ -334,7 +367,7 @@ describe("Connect workout API", () => {
           { name: "Stale" },
           ["exercise"],
         )],
-        meta: { total_count: 1, has_more: false },
+        meta: { totalCount: 1, hasMore: false },
     }));
 
     await expect(staleResult).resolves.toEqual([expect.objectContaining({ name: "Stale" })]);
@@ -342,12 +375,56 @@ describe("Connect workout API", () => {
     await expect(connectApi.exercises.list()).resolves.toEqual([expect.objectContaining({ name: "Fresh" })]);
     expect(query).toHaveBeenCalledTimes(2);
   });
+
+  it("recovers a response-lost write by its exact durable request ID", async () => {
+    const requestId = "workout-write-request";
+    let recovered = false;
+    const recover = vi.fn(async () => {
+      recovered = true;
+      return connectSuccess(recordDocument(
+        "exercises/bench-press.md",
+        { name: "Paused Bench Press" },
+        ["exercise"],
+      ));
+    });
+    vi.spyOn(boundConnection, "pendingMutation").mockImplementation((candidate) =>
+      candidate === requestId ? ({
+        requestId,
+        operation: "update",
+        fingerprint: "fingerprint",
+        status: "outcome_unknown",
+        createdAt: new Date().toISOString(),
+        recover,
+      } as never) : null);
+    vi.spyOn(boundConnection, "pendingMutations").mockImplementation(() => recovered ? [] : ([{
+      requestId,
+      operation: "update",
+      fingerprint: "fingerprint",
+      status: "outcome_unknown",
+      createdAt: new Date().toISOString(),
+      recover,
+    }] as never));
+    const update = vi.spyOn(boundConnection, "update").mockResolvedValue(connectFailure(connectProblem(
+      "operation_outcome_unknown",
+      "The workout write may have completed.",
+      { operationOutcome: "unknown", details: { request_id: requestId } },
+    )));
+
+    await expect(connectApi.exercises.update("bench-press", { name: "Paused Bench Press" }))
+      .rejects.toMatchObject({ problem: { details: { request_id: requestId } } });
+    expect(workoutPendingMutationSnapshot()).toEqual({ requestId, operation: "update" });
+
+    await recoverWorkoutPendingMutation();
+    expect(update).toHaveBeenCalledOnce();
+    expect(recover).toHaveBeenCalledWith({ timeoutMs: 20_000 });
+    expect(workoutPendingMutationSnapshot()).toBeNull();
+  });
 });
 
 function implementation(typeName: string) {
   return {
-    type_name: typeName,
-    type_version: 1,
+    typeName: typeName,
+    typeVersion: 1,
     digest: `sha256:${typeName}`,
     fields: {},
   };
@@ -356,7 +433,7 @@ function implementation(typeName: string) {
 function contractDescriptor(type: string) {
   return {
     id: `mdbase.workouts.${type}`,
-    contract_type: "record" as const,
+    contractType: "record" as const,
     version: "1.0.0",
     digest: `sha256:${type}`,
     schema: {},

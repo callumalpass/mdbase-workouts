@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { pathToSlug } from "../lib/utils";
 import { todayLocalDateKey } from "../lib/datetime";
 import { useDragToDismiss } from "../hooks/useDragToDismiss";
+import { useRequestOptions } from "../hooks/useRequestOptions";
 import ExercisePicker from "./ExercisePicker";
 import SuccessStamp from "./SuccessStamp";
 
@@ -30,6 +31,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
   const [error, setError] = useState("");
+  const requestOptions = useRequestOptions(20_000, open);
 
   const handleClose = useCallback(() => {
     setStep("details");
@@ -90,7 +92,7 @@ export default function PlanCreatorSheet({ open, onClose, onCreated }: Props) {
           ...(e.target_reps.trim() && { target_reps: e.target_reps.trim() }),
           ...(e.target_weight && { target_weight: Number(e.target_weight) }),
         })),
-      });
+      }, requestOptions());
       setShowStamp(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create this plan.";

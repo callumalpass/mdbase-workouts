@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadWorkoutCache, readWorkoutCache } from "../lib/workout-cache";
+import type { ApiRequestOptions } from "../lib/api";
 
 const DEFAULT_FRESH_MS = 30_000;
 
 interface CachedResourceOptions<T> {
   cacheKey: string;
-  load: () => Promise<T>;
+  load: (options: ApiRequestOptions) => Promise<T>;
   errorMessage: string;
   freshForMs?: number;
 }
@@ -21,6 +22,7 @@ export function useCachedResource<T>({
   const [loading, setLoading] = useState(() => initial.current === null);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+  const request = useRef<AbortController | null>(null);
 
   const run = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
@@ -34,19 +36,26 @@ export function useCachedResource<T>({
 
     if (!cached) setLoading(true);
     setError(null);
+    request.current?.abort("A newer workout request superseded this one");
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      const value = await loadWorkoutCache(cacheKey, load);
+      const pending = loadWorkoutCache(cacheKey, () => load({
+        timeoutMs: force ? 10_000 : 15_000,
+      }));
+      const value = await awaitWithSignal(pending, controller.signal);
       if (currentGeneration === generation.current) {
         setData(value);
         setError(null);
       }
       return value;
     } catch (reason) {
-      if (currentGeneration === generation.current && !cached) {
+      if (currentGeneration === generation.current && !cached && !controller.signal.aborted) {
         setError(reason instanceof Error ? reason.message : errorMessage);
       }
       return null;
     } finally {
+      if (request.current === controller) request.current = null;
       if (currentGeneration === generation.current) setLoading(false);
     }
   }, [cacheKey, errorMessage, freshForMs, load]);
@@ -60,10 +69,27 @@ export function useCachedResource<T>({
     void run(false);
     return () => {
       generation.current += 1;
+      request.current?.abort("Workout view closed");
+      request.current = null;
     };
   }, [cacheKey, run]);
 
   const refresh = useCallback(() => run(true), [run]);
 
   return { data, loading, error, refresh };
+}
+
+function awaitWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortError(signal));
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Workout request aborted", "AbortError");
 }

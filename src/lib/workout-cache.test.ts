@@ -1,11 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import {
-  connectSuccess,
-  unwrapConnectOutcome,
-  type MdbaseAppManifest,
-  type MdbaseConnectionInfo,
-} from "@mdbase-dev/connect";
+import type { MdbaseAppManifest, MdbaseConnectionInfo } from "@mdbase-dev/connect";
+import { connectSuccess } from "@mdbase-dev/connect-testing";
 import { workoutConnect, workoutSession } from "./connect";
+import { requireConnectOutcome } from "./connect-outcome";
 import workoutManifest from "../../public/.well-known/mdbase-app.json";
 import {
   clearWorkoutCache,
@@ -15,10 +12,18 @@ import {
 } from "./workout-cache";
 
 beforeAll(async () => {
+  vi.spyOn(workoutConnect, "register").mockResolvedValue(connectSuccess({
+    id: "workouts-test-application",
+    family_identity: "bundle:dev.mdbase.workouts",
+    manifest_digest: "0".repeat(64),
+    name: "MDBase Workouts",
+    homepage: "https://callumalpass.github.io/mdbase-workouts/",
+    requirements: workoutManifest.requirements as NonNullable<MdbaseAppManifest["requirements"]>,
+  }));
   vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
     connectSuccess(workoutManifest as MdbaseAppManifest),
   );
-  unwrapConnectOutcome(await workoutSession.start());
+  requireConnectOutcome(await workoutSession.start());
 });
 
 afterAll(() => workoutSession.destroy());
@@ -44,6 +49,7 @@ function useCollection(collectionId: string) {
     }),
     info: () => info,
     onConnectionChange: () => () => undefined,
+    assessCollectionSetup: async () => connectSuccess({ status: "current" } as never),
   } as never);
   workoutSession.select(collectionId, { history: "replace" });
 }

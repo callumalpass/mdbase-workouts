@@ -48,8 +48,8 @@ export default function TodayTab() {
   const [planningError, setPlanningError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const timeZone = getUserTimeZone();
-  const loadStats = useCallback(() => api.stats.get(timeZone), [timeZone]);
-  const loadWeeklyStats = useCallback(() => api.stats.weekly(timeZone), [timeZone]);
+  const loadStats = useCallback((options: import("../lib/api").ApiRequestOptions) => api.stats.get(timeZone, options), [timeZone]);
+  const loadWeeklyStats = useCallback((options: import("../lib/api").ApiRequestOptions) => api.stats.weekly(timeZone, options), [timeZone]);
   const { data: stats, refresh: refreshStats } = useCachedResource<StatsResponse>({
     cacheKey: `stats:${timeZone}`,
     load: loadStats,

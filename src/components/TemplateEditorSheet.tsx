@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { parseWikilink, pathToSlug } from "../lib/utils";
 import { useExercises } from "../hooks/useExercises";
 import { useDragToDismiss } from "../hooks/useDragToDismiss";
+import { useRequestOptions } from "../hooks/useRequestOptions";
 import ExercisePicker from "./ExercisePicker";
 import SuccessStamp from "./SuccessStamp";
 
@@ -31,6 +32,7 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
   const [saving, setSaving] = useState(false);
   const [showStamp, setShowStamp] = useState(false);
   const [error, setError] = useState("");
+  const requestOptions = useRequestOptions(20_000, open);
 
   const isEditing = !!template;
 
@@ -118,9 +120,9 @@ export default function TemplateEditorSheet({ open, template, onClose, onSaved }
       };
 
       if (isEditing) {
-        await api.planTemplates.update(pathToSlug(template!.path), payload);
+        await api.planTemplates.update(pathToSlug(template!.path), payload, requestOptions());
       } else {
-        await api.planTemplates.create(payload);
+        await api.planTemplates.create(payload, requestOptions());
       }
       setShowStamp(true);
     } catch (err) {

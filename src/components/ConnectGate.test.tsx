@@ -28,6 +28,9 @@ const gateway = vi.hoisted(() => {
 vi.mock("../lib/connect", () => ({
   connectErrorMessage: vi.fn((reason: unknown) => String(reason)),
   connectIsRequired: vi.fn(() => true),
+  recoverWorkoutPendingMutation: vi.fn(),
+  refreshWorkoutPendingMutation: vi.fn(),
+  subscribeToWorkoutPendingMutation: vi.fn(() => () => undefined),
   requireWorkoutConnection: vi.fn(),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
   workoutSession: {
@@ -35,6 +38,7 @@ vi.mock("../lib/connect", () => ({
     select: gateway.select,
     start: gateway.start,
   },
+  workoutPendingMutationSnapshot: vi.fn(() => null),
   workoutSnapshot: vi.fn(() => gateway.snapshot),
 }));
 
@@ -53,7 +57,10 @@ it("connects another collection without pinning the stale selection", async () =
     await screen.findByRole("button", { name: "Connect another collection" }),
   );
 
-  expect(gateway.authorize).toHaveBeenCalledWith("choose");
+  expect(gateway.authorize).toHaveBeenCalledWith("choose", {
+    signal: expect.any(AbortSignal),
+    timeoutMs: 15_000,
+  });
 });
 
 it("opens a remembered collection through the session without reloading", async () => {

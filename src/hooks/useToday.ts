@@ -6,7 +6,7 @@ import { useCachedResource } from "./useCachedResource";
 
 export function useToday() {
   const timeZone = getUserTimeZone();
-  const load = useCallback(() => api.today(timeZone), [timeZone]);
+  const load = useCallback((options: import("../lib/api").ApiRequestOptions) => api.today(timeZone, options), [timeZone]);
 
   return useCachedResource<TodayData>({
     cacheKey: `today:${timeZone}:${todayLocalDateKey()}`,

@@ -5,7 +5,7 @@ import { useCachedResource } from "./useCachedResource";
 
 export function useExercises() {
   const [search, setSearch] = useState("");
-  const load = useCallback(() => api.exercises.list(), []);
+  const load = useCallback((options: import("../lib/api").ApiRequestOptions) => api.exercises.list(options), []);
   const { data, loading } = useCachedResource<Exercise[]>({
     cacheKey: "exercises",
     load,

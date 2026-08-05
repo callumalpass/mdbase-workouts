@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -7,15 +8,17 @@ import {
 import {
   connectErrorMessage,
   connectIsRequired,
+  recoverWorkoutPendingMutation,
+  refreshWorkoutPendingMutation,
+  subscribeToWorkoutPendingMutation,
   subscribeToWorkoutSession,
+  workoutPendingMutationSnapshot,
   workoutSession,
   workoutSnapshot,
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
-import {
-  unwrapConnectOutcome,
-  type MdbaseConnection,
-} from "@mdbase-dev/connect";
+import type { ConnectRequestOptions, MdbaseConnection } from "@mdbase-dev/connect";
+import { requireConnectOutcome } from "../lib/connect-outcome";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -29,12 +32,17 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   );
   const [starting, setStarting] = useState(true);
   const [opening, setOpening] = useState(false);
+  const [applyingDefinitions, setApplyingDefinitions] = useState(false);
   const [error, setError] = useState("");
+  const foregroundRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let active = true;
-    void workoutSession.start()
-      .then(unwrapConnectOutcome)
+    // The application session is a process-wide shared bootstrap. Consumers may
+    // unmount independently (including React StrictMode's probe mount), so only
+    // detach this consumer; keep the shared, bounded startup alive.
+    void workoutSession.start({ timeoutMs: 15_000 })
+      .then(requireConnectOutcome)
       .catch((reason: unknown) => {
         if (active) setError(connectErrorMessage(reason));
       })
@@ -44,6 +52,10 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => () => {
+    foregroundRequest.current?.abort("Workout connection screen closed");
   }, []);
 
   if (snapshot.status === "ready") {
@@ -63,18 +75,50 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     setOpening(true);
     setError("");
     try {
-      unwrapConnectOutcome(await workoutSession.authorize("choose"));
+      requireConnectOutcome(await workoutSession.authorize("choose", requestOptions(15_000)));
     } catch (reason) {
       setError(connectErrorMessage(reason));
+    } finally {
       setOpening(false);
     }
+  }
+
+  async function reviewAuthorization() {
+    setOpening(true);
+    setError("");
+    try {
+      requireConnectOutcome(await workoutSession.authorize("selected", requestOptions(15_000)));
+    } catch (reason) {
+      setError(connectErrorMessage(reason));
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  async function applyCollectionSetup() {
+    setApplyingDefinitions(true);
+    setError("");
+    try {
+      requireConnectOutcome(await workoutSession.applyCollectionSetup(requestOptions(30_000)));
+    } catch (reason) {
+      setError(connectErrorMessage(reason));
+    } finally {
+      setApplyingDefinitions(false);
+    }
+  }
+
+  function requestOptions(timeoutMs: number): ConnectRequestOptions {
+    foregroundRequest.current?.abort("A newer workout connection action superseded this one");
+    const controller = new AbortController();
+    foregroundRequest.current = controller;
+    return { signal: controller.signal, timeoutMs };
   }
 
   function openConnection(collectionId: string) {
     setError("");
     try {
       invalidateConnectApiCache();
-      unwrapConnectOutcome(
+      requireConnectOutcome(
         workoutSession.select(collectionId, { history: "replace" }),
       );
     } catch (reason) {
@@ -94,7 +138,11 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         ? snapshot.problem.message
         : "";
   const displayedError = error || unavailableMessage;
-  const busy = starting || opening;
+  const reviewingDefinitions = snapshot.status === "setup_review_required";
+  const checkingDefinitions = snapshot.status === "checking_setup";
+  const definitionsApplicable = !reviewingDefinitions
+    || snapshot.update.canApply;
+  const busy = starting || opening || applyingDefinitions || checkingDefinitions;
 
   return (
     <main className="min-h-[100dvh] overflow-y-auto px-5 py-10 sm:py-16">
@@ -138,6 +186,20 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             </div>
           )}
 
+          {reviewingDefinitions && (
+            <div className="mb-4 border border-ocean bg-paper px-3 py-3 text-sm">
+              <strong className="block">Review workout definitions</strong>
+              <p className="mt-1 text-faded">
+                Workouts needs to install or update its portable record definitions before opening this collection.
+              </p>
+              <ul className="mt-2 space-y-1 font-mono text-xs text-faded">
+                {snapshot.update.typePacks.map((update) => (
+                  <li key={update.id}>{update.name}: {update.status}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {snapshot.connections.length ? (
             <div className="mb-4 border-y border-rule">
               {snapshot.connections.map((connection) => (
@@ -163,18 +225,28 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
 
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !definitionsApplicable}
             onClick={() => void (
-              snapshot.status === "authorization_required"
-                ? workoutSession.authorize("selected").then(unwrapConnectOutcome)
+              reviewingDefinitions
+                ? applyCollectionSetup()
+                : snapshot.status === "authorization_required"
+                ? reviewAuthorization()
                 : beginConnection()
             )}
             className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
           >
-            {starting
+            {applyingDefinitions
+              ? "Applying workout definitions…"
+              : checkingDefinitions
+                ? "Checking workout definitions…"
+                : starting
               ? "Checking connection…"
               : opening
                 ? "Opening mdbase connect…"
+                : reviewingDefinitions
+                  ? definitionsApplicable
+                    ? "Apply workout definitions"
+                    : "Resolve definition conflicts"
                 : snapshot.status === "authorization_required"
                   ? "Review updated access"
                   : snapshot.connections.length
@@ -197,10 +269,47 @@ function ConnectedCollection({
   connection: MdbaseConnection;
   children: ReactNode;
 }) {
+  const pending = useSyncExternalStore(
+    subscribeToWorkoutPendingMutation,
+    workoutPendingMutationSnapshot,
+  );
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
   useEffect(() => {
     invalidateConnectApiCache();
-    void connection.checkDirectAccess();
-    return () => invalidateConnectApiCache();
+    refreshWorkoutPendingMutation();
+    const controller = new AbortController();
+    void connection.checkDirectAccess({ signal: controller.signal, timeoutMs: 5_000 }).catch(() => {});
+    return () => {
+      controller.abort("Workout collection changed");
+      invalidateConnectApiCache();
+    };
   }, [connection]);
-  return <>{children}</>;
+
+  async function recover() {
+    setRecovering(true);
+    setRecoveryError("");
+    try {
+      await recoverWorkoutPendingMutation({ timeoutMs: 20_000 });
+      invalidateConnectApiCache();
+    } catch (error) {
+      setRecoveryError(connectErrorMessage(error));
+    } finally {
+      setRecovering(false);
+    }
+  }
+
+  return <>
+    {pending && <aside role="status" className="mx-auto mt-3 max-w-2xl border border-blush bg-paper px-4 py-3 text-sm">
+      <p>This workout write may have completed. Recover request <code>{pending.requestId}</code> before making it again.</p>
+      {recoveryError && <p role="alert" className="mt-2 text-blush">{recoveryError}</p>}
+      <button
+        type="button"
+        disabled={recovering}
+        onClick={() => void recover()}
+        className="mt-3 bg-blush px-3 py-2 font-semibold text-paper disabled:opacity-50"
+      >{recovering ? "Recovering…" : "Recover write"}</button>
+    </aside>}
+    {children}
+  </>;
 }

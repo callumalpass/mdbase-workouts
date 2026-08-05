@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
@@ -9,6 +9,9 @@ const stateDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_STATE_DIR");
 const collectionDir = requiredEnvironment("MDBASE_CONNECT_DOGFOOD_COLLECTION_DIR");
 const userName = process.env.MDBASE_CONNECT_DOGFOOD_USER_NAME || "Workout Dogfood";
 const userEmail = process.env.MDBASE_CONNECT_DOGFOOD_USER_EMAIL || "workout-dogfood@localhost.test";
+const serverUrl = process.env.MDBASE_CONNECT_DOGFOOD_SERVER_URL;
+const loopbackPort = process.env.MDBASE_CONNECT_DOGFOOD_LOOPBACK_PORT;
+let managedDaemon: ReturnType<typeof spawn> | null = null;
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -18,9 +21,7 @@ function requiredEnvironment(name: string): string {
 
 async function connector(args: string[]) {
   const result = await run(cli, ["--state-dir", stateDir, "--json", "connect", ...args]);
-  const body = JSON.parse(result.stdout);
-  if (!body.ok) throw new Error(body.error?.message || "Connector command failed.");
-  return body.result;
+  return JSON.parse(result.stdout);
 }
 
 async function eventually<T>(action: () => Promise<T | null>, message: string): Promise<T> {
@@ -31,6 +32,94 @@ async function eventually<T>(action: () => Promise<T | null>, message: string): 
   }
   throw new Error(message);
 }
+
+async function pairIsolatedConnector(page: import("@playwright/test").Page): Promise<void> {
+  if (!serverUrl) {
+    throw new Error("MDBASE_CONNECT_DOGFOOD_SERVER_URL is required when the isolated connector is not paired.");
+  }
+  const consentUrl = page.url();
+  const child = spawn(cli, [
+    "--state-dir", stateDir,
+    "connect", "login",
+    "--server", serverUrl,
+    "--name", "Workout Dogfood Computer",
+    "--no-open",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  try {
+    const pairingUrl = await new Promise<string>((resolve, reject) => {
+      const inspect = (chunk: Buffer) => {
+        output += chunk.toString();
+        const match = output.match(/https?:\/\/\S+\/pair\/[^\s]+/);
+        if (match) resolve(match[0]);
+      };
+      child.stdout.on("data", inspect);
+      child.stderr.on("data", inspect);
+      child.once("error", reject);
+      child.once("exit", (code) => {
+        if (code && !output.match(/https?:\/\/\S+\/pair\/[^\s]+/)) {
+          reject(new Error(`Connector pairing exited with ${code}: ${output}`));
+        }
+      });
+    });
+    const pairingPage = await page.context().newPage();
+    await pairingPage.goto(pairingUrl);
+    await expect(pairingPage.getByRole("heading", { name: "Workout Dogfood Computer" })).toBeVisible();
+    await pairingPage.getByRole("button", { name: "Approve computer" }).click();
+    const exitCode = await childExit(child);
+    await pairingPage.close();
+    if (exitCode !== 0 && !loopbackPort) {
+      throw new Error(`Connector pairing exited with ${exitCode}: ${output}`);
+    }
+    // `connect login` does not return until its replacement daemon answers a
+    // ready probe. Give that process a brief stability window so a daemon that
+    // only lived long enough to bind the control socket is not mistaken for a
+    // successful restart (for example, if its loopback port is already taken).
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      await connector(["status"]);
+    } catch {
+      if (!loopbackPort) throw new Error("The paired connector did not restart and no dogfood loopback port was provided.");
+      managedDaemon = spawn(cli, [
+        "--state-dir", stateDir,
+        "connect", "daemon", "run",
+        "--loopback-port", loopbackPort,
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      await eventually(async () => {
+        try {
+          const status = await connector(["status"]);
+          return status.state === "connected" ? status : null;
+        } catch {
+          return null;
+        }
+      }, "The paired connector did not restart on the isolated loopback port.");
+    }
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await page.goto(consentUrl);
+      if (await page.locator('input[type="radio"]').count()) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error("The paired connector did not publish its collection to the authorization request.");
+  } finally {
+    if (child.exitCode === null) child.kill("SIGTERM");
+  }
+}
+
+function childExit(child: ReturnType<typeof spawn>): Promise<number | null> {
+  if (child.exitCode !== null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+  });
+}
+
+test.afterAll(async () => {
+  const daemon = managedDaemon;
+  managedDaemon = null;
+  if (!daemon || daemon.exitCode !== null) return;
+  daemon.kill("SIGINT");
+  await childExit(daemon);
+});
 
 test("real workout UI authorizes and writes through mdbase connect", async ({ page }) => {
   const quickLogsBefore = (await readdir(`${collectionDir}/quick-logs`)).filter((file) => file.endsWith(".md"));
@@ -46,12 +135,25 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "MDBase Workouts" })).toBeVisible();
-  await page.getByRole("button", { name: "Allow MDBase Workouts" }).click();
+  if (await page.getByText("No compatible collection is ready.").isVisible()) {
+    await pairIsolatedConnector(page);
+    await expect(page.getByRole("heading", { name: "MDBase Workouts" })).toBeVisible();
+  }
+  const collection = page.locator('input[type="radio"]').first();
+  await expect(collection).toBeAttached();
+  if (!(await collection.isChecked())) await collection.check();
+  const existingTypeChoices = page.getByRole("radio", { name: /^Use an existing type/ });
+  for (const choice of await existingTypeChoices.all()) await choice.check();
+  await page.getByRole("button", { name: /allow MDBase Workouts$/i }).click();
 
   // The authorization tab owns the PKCE browser context and returns itself to
   // the application as soon as the portal records the explicit collection
   // choice and consent.
-  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible({ timeout: 10_000 });
+  const todayHeading = page.getByRole("heading", { name: "Today" });
+  const applyDefinitions = page.getByRole("button", { name: "Apply workout definitions" });
+  await expect(todayHeading.or(applyDefinitions)).toBeVisible({ timeout: 10_000 });
+  if (await applyDefinitions.isVisible()) await applyDefinitions.click();
+  await expect(todayHeading).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: /quick log/i })).toBeVisible();
   await page.screenshot({ path: "test-results/dogfood-connected-today.png", animations: "disabled" });
 
@@ -79,8 +181,9 @@ test("real workout UI authorizes and writes through mdbase connect", async ({ pa
 
   await connector(["access", "pause"]);
   try {
-    // The live Today view refreshes through the SDK. Pausing Connect must make
-    // that real collection query fail closed and leave an auditable denial.
+    // A fresh Today load must query through the SDK. Pausing Connect makes
+    // that real collection query fail closed and leaves an auditable denial.
+    await page.reload();
     await expect(
       page.getByText("Application access denied: Remote access is paused on this computer."),
     ).toBeVisible({ timeout: 20_000 });
