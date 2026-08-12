@@ -49,7 +49,11 @@ function useCollection(collectionId: string) {
     }),
     info: () => info,
     onConnectionChange: () => () => undefined,
-    assessCollectionSetup: async () => connectSuccess({ status: "current" } as never),
+    assessCollectionSetup: async () => connectSuccess({
+      status: "current",
+      applicable: true,
+      typePacks: [],
+    } as never),
   } as never);
   workoutSession.select(collectionId, { history: "replace" });
 }

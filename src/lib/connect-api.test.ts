@@ -49,7 +49,11 @@ const boundConnection = {
   update: vi.fn(),
   delete: vi.fn(),
   describe: vi.fn(),
-  assessCollectionSetup: vi.fn(async () => connectSuccess({ status: "current" } as never)),
+  assessCollectionSetup: vi.fn(async () => connectSuccess({
+    status: "current",
+    applicable: true,
+    typePacks: [],
+  } as never)),
   applyCollectionSetup: vi.fn(),
   assessTypePack: vi.fn(async () => connectSuccess({ status: "current" } as never)),
   applyTypePack: vi.fn(),
