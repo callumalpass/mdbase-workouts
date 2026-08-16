@@ -1,31 +1,31 @@
 {
   "schema_version": 1,
   "repository": "https://github.com/mdbase-dev/mdbase-connect",
-  "revision": "90334b9c4f6de306bdee5b6992a849362d508789",
+  "revision": "cb26903a96416cd7ea833e6ae922e1e5f1e41d57",
   "artifacts": [
     {
       "package": "connect",
-      "file": "mdbase-dev-connect-0.1.0-beta.69-90334b9c4f6d.tgz",
-      "bytes": 160934,
-      "sha512": "eodTZfuRsLuwRVfTT4/kSwJr1jWxKoY/7cBEKwoM9kIrI8/sGh+f15Fb1aFB8suCV11qVybJobl1EznvS/9/GQ=="
+      "file": "mdbase-dev-connect-0.1.0-beta.72-cb26903a9641.tgz",
+      "bytes": 162608,
+      "sha512": "ikMjH1r/wlEOH0Tfcvn2sIN/eKJ5E9p2WnJZ84hIQxWcnvVS1/vCtu0oSX5Agopb8lIG3PdogLhBJq1WEkn99A=="
     },
     {
       "package": "devkit",
-      "file": "mdbase-dev-connect-dev-0.1.0-beta.69-90334b9c4f6d.tgz",
-      "bytes": 9245,
-      "sha512": "bHWVME4fV/4AKSeIo1ItMYAYMMyHk6LjyFJNqipsK7qnuzyNRb+ygS25/u1uceRtPtn8i349hpSufCebohrLww=="
+      "file": "mdbase-dev-connect-dev-0.1.0-beta.72-cb26903a9641.tgz",
+      "bytes": 9241,
+      "sha512": "5ge352oSt16fge/PQQTHgHLs7/10Ibt/KwTodEGOEmjYRUXZgLXovG9dHG0BY33Y8njvezmBGJj+JI1XJbMWYQ=="
     },
     {
       "package": "protocol",
-      "file": "mdbase-dev-connect-protocol-0.1.0-beta.69-90334b9c4f6d.tgz",
-      "bytes": 56109,
-      "sha512": "BDs378h5o7+bFcMc+u3cLAuk8zfjF333ZX9NsjSmZ39EasQQ3AqjG0Hgf79MezuSHczqskXUhgL5hqHZQ9ivsw=="
+      "file": "mdbase-dev-connect-protocol-0.1.0-beta.72-cb26903a9641.tgz",
+      "bytes": 56148,
+      "sha512": "g/1bj1OidYAXBmxbfIyYCBXdSxJxdhZ3Iz3g4/5HITkA+RNa3iit5aYcvJI8+5HJx2v1cEsL5k6TntFw1wyaVw=="
     },
     {
       "package": "testing",
-      "file": "mdbase-dev-connect-testing-0.1.0-beta.69-90334b9c4f6d.tgz",
-      "bytes": 6801,
-      "sha512": "fsLE0BfScS/8wcKyxsUZWlG2r+DNQxU23jN1XQ0VMiPaT6Ry5gClAMM1cCaPSU64PwPFqkrbGBxTEdGxiWqfdw=="
+      "file": "mdbase-dev-connect-testing-0.1.0-beta.72-cb26903a9641.tgz",
+      "bytes": 6798,
+      "sha512": "T53ixF0SEO+jzuii/WYfc+RnlhWFGMw7KzvdjZ7WYdKjWNLp7MdJ2dQAkvqb/9ijjySHfApZgmJfYJo+45Dzug=="
     }
   ]
 }
