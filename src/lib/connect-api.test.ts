@@ -44,6 +44,7 @@ const boundConnection = {
   onConnectionChange: vi.fn(() => () => undefined),
   info: vi.fn(),
   query: vi.fn(),
+  queryPages: vi.fn(),
   read: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -158,6 +159,28 @@ beforeEach(() => {
     ],
   }));
   vi.spyOn(boundConnection, "pendingMutations").mockReturnValue([]);
+  vi.spyOn(boundConnection, "read").mockImplementation(async (input) =>
+    connectSuccess(recordDocument(input.path, {}, []))
+  );
+  vi.spyOn(boundConnection, "queryPages").mockImplementation((input, options) =>
+    (async function* () {
+      const outcome = await boundConnection.query(input, {
+        timeoutMs: options?.pageTimeoutMs,
+      });
+      if (!outcome.ok) {
+        yield outcome as never;
+        return;
+      }
+      yield connectSuccess({
+        results: outcome.value.results,
+        meta: outcome.value.meta,
+        page: 0,
+        offset: 0,
+        loaded: outcome.value.results.length,
+        complete: !(outcome.value.meta?.hasMore ?? false),
+      });
+    })()
+  );
   refreshWorkoutPendingMutation();
 });
 
@@ -192,8 +215,48 @@ describe("Connect workout API", () => {
         id: "mdbase.workouts.exercise",
         version: "1.0.0",
       },
-      limit: 20000,
     }, { timeoutMs: 10_000 });
+    expect(boundConnection.queryPages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        firstPageSize: 500,
+        pageSize: 500,
+        pageTimeoutMs: 10_000,
+      }),
+    );
+  });
+
+  it("loads every contract result through bounded opaque pages", async () => {
+    vi.spyOn(boundConnection, "query").mockRejectedValue(
+      new Error("one-shot query must not be used"),
+    );
+    vi.spyOn(boundConnection, "queryPages").mockImplementation(() =>
+      (async function* () {
+        yield connectSuccess({
+          results: [queryRecord("exercises/alpha.md", { name: "Alpha" }, ["exercise"])],
+          meta: { totalCount: 2, hasMore: true, cursor: "opaque-next" },
+          page: 0,
+          offset: 0,
+          loaded: 1,
+          complete: false,
+          cursor: "opaque-next",
+        });
+        yield connectSuccess({
+          results: [queryRecord("exercises/beta.md", { name: "Beta" }, ["exercise"])],
+          meta: { totalCount: 2, hasMore: false },
+          page: 1,
+          offset: 1,
+          loaded: 2,
+          complete: true,
+        });
+      })(),
+    );
+
+    await expect(connectApi.exercises.list()).resolves.toEqual([
+      expect.objectContaining({ name: "Alpha" }),
+      expect.objectContaining({ name: "Beta" }),
+    ]);
+    expect(boundConnection.query).not.toHaveBeenCalled();
   });
 
   it("uses the canonical patch input for updates", async () => {
@@ -203,16 +266,50 @@ describe("Connect workout API", () => {
         ["exercise"],
       )));
 
-    await connectApi.exercises.update("bench-press", { name: "Paused Bench Press" });
+    await expect(
+      connectApi.exercises.update("bench-press", {
+        name: "Paused Bench Press",
+        path: "frontmatter-must-not-override.md",
+        revision: "frontmatter-must-not-override",
+      } as never),
+    ).resolves.toMatchObject({
+      path: "exercises/bench-press.md",
+      revision: "revision-2",
+    });
 
     expect(update).toHaveBeenCalledWith({
       path: "exercises/bench-press.md",
       patch: { name: "Paused Bench Press" },
+      ifRevision: "revision-2",
       contract: {
         id: "mdbase.workouts.exercise",
         version: "1.0.0",
       },
     }, { timeoutMs: 20_000 });
+    expect(boundConnection.read).toHaveBeenCalledWith(
+      {
+        path: "exercises/bench-press.md",
+        contract: { id: "mdbase.workouts.exercise", version: "1.0.0" },
+      },
+      { timeoutMs: 10_000 },
+    );
+  });
+
+  it("revision-guards deletes with a fresh exact point read", async () => {
+    const remove = vi.spyOn(boundConnection, "delete").mockResolvedValue(
+      connectSuccess({ path: "sessions/session-1.md", deleted: true }),
+    );
+
+    await connectApi.sessions.delete("session-1");
+
+    expect(remove).toHaveBeenCalledWith(
+      {
+        path: "sessions/session-1.md",
+        ifRevision: "revision-2",
+        contract: { id: "mdbase.workouts.session", version: "1.0.0" },
+      },
+      { timeoutMs: 20_000 },
+    );
   });
 
   it("selects one exact provider when creating into a contract with several implementations", async () => {
@@ -317,6 +414,35 @@ describe("Connect workout API", () => {
     await expect(retained).resolves.toEqual([expect.objectContaining({ name: "Bench Press" })]);
     expect(query).toHaveBeenCalledOnce();
     expect(query).toHaveBeenCalledWith(expect.anything(), { timeoutMs: 10_000 });
+  });
+
+  it("cancels the shared cursor scan when its final caller leaves", async () => {
+    let scanSignal: AbortSignal | undefined;
+    vi.spyOn(boundConnection, "queryPages").mockImplementation((_input, options) =>
+      (async function* () {
+        scanSignal = options?.signal;
+        await new Promise<void>((_resolve, reject) => {
+          scanSignal?.addEventListener(
+            "abort",
+            () => reject(scanSignal?.reason),
+            { once: true },
+          );
+        });
+      })(),
+    );
+    const first = new AbortController();
+    const second = new AbortController();
+
+    const firstRequest = connectApi.exercises.list({ signal: first.signal });
+    const secondRequest = connectApi.exercises.list({ signal: second.signal });
+    await vi.waitFor(() => expect(scanSignal).toBeDefined());
+    first.abort("First view closed");
+    expect(scanSignal?.aborted).toBe(false);
+    second.abort("Second view closed");
+
+    await expect(firstRequest).rejects.toMatchObject({ name: "AbortError" });
+    await expect(secondRequest).rejects.toMatchObject({ name: "AbortError" });
+    expect(scanSignal?.aborted).toBe(true);
   });
 
   it("keeps a cold Today startup to five contract queries", async () => {

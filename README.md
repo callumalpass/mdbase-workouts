@@ -245,13 +245,28 @@ VITE_MDBASE_CONNECT_URL=http://localhost:18789 \
 npm run dev:fe -- --host 127.0.0.1 --port 5187 --strictPort
 ```
 
-The GitHub Actions workflow typechecks, runs unit and browser tests, builds the static app, and deploys `dist/` to GitHub Pages on pushes to `main`. It can also be dispatched manually from a branch for a release candidate deployment.
+For an isolated staging build, use the fail-closed dev deployment. All three URLs
+are mandatory, and the command rejects the production application and Connect
+origins rather than falling back to them:
+
+```bash
+MDBASE_WORKOUTS_DEV_ORIGIN=http://127.0.0.1:5187 \
+MDBASE_WORKOUTS_DEV_CONNECT_URL=http://127.0.0.1:18789 \
+MDBASE_WORKOUTS_DEV_LOOPBACK_URL=http://127.0.0.1:28486 \
+npm run deploy:dev
+```
+
+The GitHub Actions workflow typechecks, runs unit and browser tests, builds the
+static app, and deploys `dist/` to GitHub Pages on pushes to `main`. Branch review
+and staging missions use `deploy:dev`; they do not replace the production Pages
+site.
 
 ## Scripts
 
 - `npm run dev` - start frontend and backend concurrently
 - `npm run dev:fe` - start frontend only
 - `npm run dev:be` - start backend only
+- `npm run deploy:dev` - build and serve an isolated, explicitly configured staging app
 - `npm run build` - build frontend assets
 - `npm run typecheck` - run frontend and backend TypeScript checks
 - `npm run lint` - alias for `npm run typecheck`

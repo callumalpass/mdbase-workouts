@@ -22,8 +22,8 @@ import type {
   JsonObject,
   MdbaseConnection,
   QueryInput,
+  QueryPage,
   QueryRecord,
-  QueryResult,
   RecordDocument,
 } from "@mdbase-dev/connect";
 import { rememberWorkoutPendingMutation, requireWorkoutConnection } from "./connect";
@@ -51,14 +51,19 @@ const CONTRACTS: Record<WorkoutType, string> = {
 const SOURCE_FRESH_MS = 30_000;
 const READ_TIMEOUT_MS = 10_000;
 const WRITE_TIMEOUT_MS = 20_000;
+const QUERY_PAGE_SIZE = 500;
+const MAX_SOURCE_ROWS = 100_000;
 let cacheGeneration = 0;
-const sourceCache = new Map<string, {
+interface SourceCacheEntry {
   collectionId: string;
   generation: number;
   savedAt?: number;
   value?: QueryRow[];
   pending?: Promise<QueryRow[]>;
-}>();
+  controller?: AbortController;
+  subscribers?: number;
+}
+const sourceCache = new Map<string, SourceCacheEntry>();
 
 function validResult<Result>(outcome: ConnectOutcome<Result>): Result {
   return requireConnectOutcome(outcome);
@@ -92,10 +97,6 @@ async function createProvider(type: WorkoutType, options: ConnectRequestOptions 
   return (
     providers.find((provider) => provider.typeName === type) ?? providers[0]
   ).typeName;
-}
-
-async function query(input: QueryInput, options: ConnectRequestOptions = {}): Promise<QueryResult> {
-  return validResult(await requireWorkoutConnection().query(input, withTimeout(options, READ_TIMEOUT_MS)));
 }
 
 async function read(
@@ -138,11 +139,14 @@ async function update(
   patch: JsonObject,
   options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
+  const current = await read(type, path, options);
+  const { path: _path, revision: _revision, ...frontmatterPatch } = patch;
   try {
     return validResult(
       await requireWorkoutConnection().update({
         path,
-        patch,
+        patch: frontmatterPatch,
+        ifRevision: current.revision,
         contract: contract(type),
       }, withTimeout(options, WRITE_TIMEOUT_MS)),
     );
@@ -155,10 +159,11 @@ async function update(
 }
 
 async function remove(type: WorkoutType, path: string, options: ConnectRequestOptions = {}): Promise<void> {
+  const current = await read(type, path, options);
   try {
     validResult(
       await requireWorkoutConnection().delete(
-        { path, contract: contract(type) },
+        { path, ifRevision: current.revision, contract: contract(type) },
         withTimeout(options, WRITE_TIMEOUT_MS),
       ),
     );
@@ -185,7 +190,11 @@ function operationRecord<T>(value: RecordDocument<JsonObject>, fallbackPath: str
     ? value.frontmatter as Record<string, unknown>
     : {};
   const file = value.file && typeof value.file === "object" ? value.file as { path?: string } : undefined;
-  return { path: String(value.path ?? file?.path ?? fallbackPath), ...frontmatter } as T;
+  return {
+    ...frontmatter,
+    path: String(value.path ?? file?.path ?? fallbackPath),
+    revision: value.revision,
+  } as T;
 }
 
 function slugify(value: string): string {
@@ -221,7 +230,7 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
 
 async function rows(
   type: WorkoutType,
-  extra: Pick<QueryInput, "limit" | "offset" | "frontmatterMode"> = {},
+  extra: Pick<QueryInput, "frontmatterMode"> = {},
   options: ConnectRequestOptions = {},
 ): Promise<QueryRow[]> {
   const collectionId = requireWorkoutConnection().collectionId;
@@ -231,18 +240,22 @@ async function rows(
     if (cached.value && cached.savedAt && Date.now() - cached.savedAt < SOURCE_FRESH_MS) {
       return cached.value;
     }
-    if (cached.pending) return awaitWithSignal(cached.pending, options.signal);
+    if (cached.pending) return awaitSharedRows(cached, options.signal);
   }
 
   const generation = cacheGeneration;
   const { signal, ...sharedOptions } = options;
-  let entry: {
-    collectionId: string;
-    generation: number;
-    pending: Promise<QueryRow[]>;
+  const controller = new AbortController();
+  const entry: SourceCacheEntry = {
+    collectionId,
+    generation,
+    controller,
+    subscribers: 0,
   };
-  const pending = query({ contract: contract(type), ...extra }, sharedOptions)
-    .then((result) => result.results ?? [])
+  const pending = collectQueryPages(type, extra, {
+    ...sharedOptions,
+    signal: controller.signal,
+  })
     .then((value) => {
       if (sourceCache.get(key) === entry && generation === cacheGeneration) {
         sourceCache.set(key, { collectionId, generation, savedAt: Date.now(), value });
@@ -253,30 +266,74 @@ async function rows(
       if (sourceCache.get(key) === entry) sourceCache.delete(key);
       throw error;
     });
-  entry = { collectionId, generation, pending };
+  entry.pending = pending;
   sourceCache.set(key, entry);
-  return awaitWithSignal(pending, signal);
+  return awaitSharedRows(entry, signal);
+}
+
+async function awaitSharedRows(
+  entry: SourceCacheEntry,
+  signal?: AbortSignal,
+): Promise<QueryRow[]> {
+  if (!entry.pending) throw new Error("Workout source scan is not pending.");
+  entry.subscribers = (entry.subscribers ?? 0) + 1;
+  try {
+    return await awaitWithSignal(entry.pending, signal);
+  } finally {
+    entry.subscribers = Math.max(0, (entry.subscribers ?? 1) - 1);
+    if (entry.subscribers === 0 && !entry.value) {
+      entry.controller?.abort(new DOMException("Workout source scan has no callers", "AbortError"));
+    }
+  }
+}
+
+async function collectQueryPages(
+  type: WorkoutType,
+  extra: Pick<QueryInput, "frontmatterMode">,
+  options: ConnectRequestOptions,
+): Promise<QueryRow[]> {
+  const rows: QueryRow[] = [];
+  const connection = requireWorkoutConnection();
+  for await (const outcome of connection.queryPages(
+    { contract: contract(type), ...extra },
+    {
+      firstPageSize: QUERY_PAGE_SIZE,
+      pageSize: QUERY_PAGE_SIZE,
+      signal: options.signal,
+      pageTimeoutMs: options.timeoutMs === undefined ? READ_TIMEOUT_MS : options.timeoutMs,
+      coordination: options.coordination,
+    },
+  )) {
+    const page: QueryPage<JsonObject> = validResult(outcome);
+    if (rows.length + page.results.length > MAX_SOURCE_ROWS) {
+      throw new Error(
+        `Workout ${type} query exceeded the ${MAX_SOURCE_ROWS.toLocaleString()}-record client budget.`,
+      );
+    }
+    rows.push(...page.results);
+  }
+  return rows;
 }
 
 const allExerciseRows = async (options: ConnectRequestOptions = {}) =>
-  [...(await rows("exercise", { limit: 20000 }, options))].sort((left, right) =>
+  [...(await rows("exercise", {}, options))].sort((left, right) =>
     String(left.frontmatter?.name ?? "").localeCompare(
       String(right.frontmatter?.name ?? ""),
     ),
   );
 const allSessionRows = async (options: ConnectRequestOptions = {}) =>
-  [...(await rows("session", { limit: 20000 }, options))].sort((left, right) =>
+  [...(await rows("session", {}, options))].sort((left, right) =>
     String(right.frontmatter?.date ?? "").localeCompare(
       String(left.frontmatter?.date ?? ""),
     ),
   );
 const allQuickLogRows = async (options: ConnectRequestOptions = {}) =>
-  [...(await rows("quick-log", { limit: 20000 }, options))].sort((left, right) =>
+  [...(await rows("quick-log", {}, options))].sort((left, right) =>
     String(right.frontmatter?.logged_at ?? "").localeCompare(
       String(left.frontmatter?.logged_at ?? ""),
     ),
   );
-const allTemplateRows = (options: ConnectRequestOptions = {}) => rows("plan-template", { limit: 20000 }, options);
+const allTemplateRows = (options: ConnectRequestOptions = {}) => rows("plan-template", {}, options);
 
 function withTimeout(options: ConnectRequestOptions, timeoutMs: number): ConnectRequestOptions {
   return { ...options, timeoutMs: options.timeoutMs ?? timeoutMs };
@@ -441,7 +498,7 @@ export const connectApi = {
   },
   plans: {
     list: async (status?: string, options: ConnectRequestOptions = {}) => {
-      const plans = [...(await rows("plan", { limit: 20000 }, options))]
+      const plans = [...(await rows("plan", {}, options))]
         .map((row) => record<Plan>(row))
         .filter((plan) => !status || plan.status === status);
       return plans.sort((left, right) => right.date.localeCompare(left.date));
@@ -476,9 +533,9 @@ export const connectApi = {
   today: async (timeZone?: string, options: ConnectRequestOptions = {}) => {
     const today = dateKey(new Date(), timeZone);
     const [planRows, sessionRows, quickLogRows, templateRows] = await Promise.all([
-      rows("plan", { limit: 20000 }, options),
-      rows("session", { limit: 20000 }, options),
-      rows("quick-log", { limit: 20000 }, options),
+      rows("plan", {}, options),
+      rows("session", {}, options),
+      rows("quick-log", {}, options),
       allTemplateRows(options),
     ]);
     return {

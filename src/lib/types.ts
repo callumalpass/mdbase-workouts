@@ -1,7 +1,11 @@
 export type TrackingType = "weight_reps" | "reps_only" | "timed" | "distance";
 
-export interface Exercise {
+export interface AuthorityRecord {
   path: string;
+  revision?: string;
+}
+
+export interface Exercise extends AuthorityRecord {
   name: string;
   muscle_groups: string[];
   equipment: string;
@@ -21,8 +25,7 @@ export interface SessionExercise {
   sets: SetData[];
 }
 
-export interface Session {
-  path: string;
+export interface Session extends AuthorityRecord {
   date: string;
   exercises: SessionExercise[];
   duration_minutes?: number;
@@ -39,8 +42,7 @@ export interface PlanExercise {
   notes?: string;
 }
 
-export interface Plan {
-  path: string;
+export interface Plan extends AuthorityRecord {
   date: string;
   title: string;
   exercises: PlanExercise[];
@@ -57,15 +59,13 @@ export interface TemplateExercise {
   notes?: string;
 }
 
-export interface PlanTemplate {
-  path: string;
+export interface PlanTemplate extends AuthorityRecord {
   title: string;
   exercises: TemplateExercise[];
   notes?: string;
 }
 
-export interface QuickLog {
-  path: string;
+export interface QuickLog extends AuthorityRecord {
   exercise: string;
   reps?: number;
   weight?: number;

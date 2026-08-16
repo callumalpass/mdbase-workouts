@@ -10,10 +10,29 @@ import { connectProblemFromError, requireConnectOutcome } from "./connect-outcom
 const environment = (import.meta as ImportMeta & {
   env: Record<string, string | boolean | undefined>;
 }).env;
-const serverUrl = String(environment.VITE_MDBASE_CONNECT_URL || "https://connect.mdbase.dev");
-const loopbackUrl = String(environment.VITE_MDBASE_CONNECT_LOOPBACK_URL || "http://127.0.0.1:28485");
+const isolatedStaging = environment.VITE_MDBASE_CONNECT_STAGING === "1";
+const serverUrl = connectEnvironmentUrl(
+  "VITE_MDBASE_CONNECT_URL",
+  "https://connect.mdbase.dev",
+);
+const loopbackUrl = connectEnvironmentUrl(
+  "VITE_MDBASE_CONNECT_LOOPBACK_URL",
+  "http://127.0.0.1:28485",
+);
+if (isolatedStaging && new URL(serverUrl).origin === "https://connect.mdbase.dev") {
+  throw new Error("An isolated Workouts build cannot use the production Connect endpoint.");
+}
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
 const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
+
+function connectEnvironmentUrl(name: string, fallback: string): string {
+  const value = environment[name];
+  if (typeof value === "string" && value.trim()) return value;
+  if (isolatedStaging) {
+    throw new Error(`${name} is required for an isolated Workouts build.`);
+  }
+  return fallback;
+}
 
 export const workoutConnect = new MdbaseConnect({
   serverUrl,
