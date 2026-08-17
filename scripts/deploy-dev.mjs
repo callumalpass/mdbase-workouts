@@ -38,7 +38,24 @@ const environment = {
   VITE_MDBASE_CONNECT_LOOPBACK_URL: loopbackUrl.href.replace(/\/$/, ""),
 };
 
-run("npm", ["run", "build"], environment);
+// The isolated deployment deliberately uses a loopback application origin.
+// Keep the same manifest checks as a production build while narrowly allowing
+// loopback URLs, then invoke Vite directly so `npm run build` cannot re-run the
+// production-only manifest validator.
+run("npm", ["run", "manifest"], environment);
+run(
+  "npm",
+  [
+    "exec",
+    "mdbase-connect-dev",
+    "--",
+    "validate-manifest",
+    "public/.well-known/mdbase-app.json",
+    "--allow-local",
+  ],
+  environment,
+);
+run("npm", ["exec", "vite", "--", "build"], environment);
 run(
   process.platform === "win32" ? "npx.cmd" : "npx",
   [
