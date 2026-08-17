@@ -250,23 +250,34 @@ are mandatory, and the command rejects the production application and Connect
 origins rather than falling back to them:
 
 ```bash
-MDBASE_WORKOUTS_DEV_ORIGIN=http://127.0.0.1:5187 \
-MDBASE_WORKOUTS_DEV_CONNECT_URL=http://127.0.0.1:18789 \
+MDBASE_WORKOUTS_DEV_ORIGIN=https://mdbase-workouts-staging.pages.dev \
+MDBASE_WORKOUTS_DEV_CONNECT_URL=https://connect-staging.mdbase.dev \
 MDBASE_WORKOUTS_DEV_LOOPBACK_URL=http://127.0.0.1:28486 \
 npm run deploy:dev
 ```
 
-The GitHub Actions workflow typechecks, runs unit and browser tests, builds the
-static app, and deploys `dist/` to GitHub Pages on pushes to `main`. Branch review
-and staging missions use `deploy:dev`; they do not replace the production Pages
-site.
+The command builds an HTTPS manifest, rejects production origins, and deploys
+only to the `mdbase-workouts-staging` Cloudflare Pages project. The GitHub Actions
+workflow typechecks, runs unit and browser tests, builds the static app, and
+deploys `dist/` to GitHub Pages on pushes to `main`. Branch review and staging
+missions use `deploy:dev`; they do not replace the production Pages site.
+The staging project is a direct-upload project whose production branch is `main`;
+that branch is the root `https://mdbase-workouts-staging.pages.dev` URL inside the
+isolated staging project. After upload, `deploy:dev` waits for that live manifest
+and verifies its homepage and sole OAuth redirect before succeeding. Provision it
+once with:
+
+```bash
+npx --yes wrangler@4.120.0 pages project create mdbase-workouts-staging \
+  --production-branch main
+```
 
 ## Scripts
 
 - `npm run dev` - start frontend and backend concurrently
 - `npm run dev:fe` - start frontend only
 - `npm run dev:be` - start backend only
-- `npm run deploy:dev` - build and serve an isolated, explicitly configured staging app
+- `npm run deploy:dev` - build and deploy the isolated, explicitly configured staging app
 - `npm run build` - build frontend assets
 - `npm run typecheck` - run frontend and backend TypeScript checks
 - `npm run lint` - alias for `npm run typecheck`
