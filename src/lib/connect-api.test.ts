@@ -1,10 +1,16 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  authorizeWorkoutCollection,
   recoverWorkoutPendingMutation,
+  forgetWorkoutCollection,
   refreshWorkoutPendingMutation,
+  selectWorkoutCollection,
+  setWorkoutStartupFailure,
+  startWorkoutSession,
   workoutConnect,
   workoutPendingMutationSnapshot,
   workoutSession,
+  workoutStartupFailureSnapshot,
 } from "./connect";
 import { connectApi, invalidateConnectApiCache } from "./connect-api";
 import type {
@@ -185,7 +191,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  workoutSession.clearSelection({ history: "replace" });
+  requireConnectOutcome(workoutSession.clearSelection({ history: "replace" }));
   vi.restoreAllMocks();
 });
 
@@ -358,6 +364,36 @@ describe("Connect workout API", () => {
     }, { timeoutMs: 20_000 });
   });
 
+  it("pins a compound session mutation and fences collection switching until it settles", async () => {
+    let finishCreate!: (value: Awaited<ReturnType<MdbaseConnection["create"]>>) => void;
+    const create = vi.spyOn(boundConnection, "create").mockReturnValue(
+      new Promise((resolve) => { finishCreate = resolve; }),
+    );
+    const update = vi.spyOn(boundConnection, "update").mockResolvedValue(connectSuccess(recordDocument(
+      "plans/plan-1.md",
+      { status: "completed" },
+      ["plan"],
+    )));
+
+    const saving = connectApi.sessions.create({
+      exercises: [],
+      plan: "plan-1",
+    });
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+
+    expect(() => selectWorkoutCollection("another-collection")).toThrow(
+      "Wait for the current workout change to finish",
+    );
+    finishCreate(connectSuccess(recordDocument(
+      "sessions/session-1.md",
+      { exercises: [] },
+      ["session"],
+    )));
+
+    await expect(saving).resolves.toMatchObject({ path: "sessions/session-1.md" });
+    expect(update).toHaveBeenCalledOnce();
+  });
+
   it("surfaces collection diagnostics", async () => {
     vi.spyOn(boundConnection, "query").mockResolvedValue(connectFailure(
       connectProblem("operation_invalid", "The workout query is not valid.", {
@@ -508,6 +544,7 @@ describe("Connect workout API", () => {
 
   it("recovers a response-lost write by its exact durable request ID", async () => {
     const requestId = "workout-write-request";
+    let recorded = false;
     let recovered = false;
     const recover = vi.fn(async () => {
       recovered = true;
@@ -526,7 +563,7 @@ describe("Connect workout API", () => {
         createdAt: new Date().toISOString(),
         recover,
       } as never) : null);
-    vi.spyOn(boundConnection, "pendingMutations").mockImplementation(() => recovered ? [] : ([{
+    vi.spyOn(boundConnection, "pendingMutations").mockImplementation(() => !recorded || recovered ? [] : ([{
       requestId,
       operation: "update",
       fingerprint: "fingerprint",
@@ -534,20 +571,128 @@ describe("Connect workout API", () => {
       createdAt: new Date().toISOString(),
       recover,
     }] as never));
-    const update = vi.spyOn(boundConnection, "update").mockResolvedValue(connectFailure(connectProblem(
-      "operation_outcome_unknown",
-      "The workout write may have completed.",
-      { operationOutcome: "unknown", details: { request_id: requestId } },
-    )));
+    const update = vi.spyOn(boundConnection, "update").mockImplementation(async () => {
+      recorded = true;
+      return connectFailure(connectProblem(
+        "operation_outcome_unknown",
+        "The workout write may have completed.",
+        { operationOutcome: "unknown", details: { request_id: requestId } },
+      ));
+    });
 
     await expect(connectApi.exercises.update("bench-press", { name: "Paused Bench Press" }))
       .rejects.toMatchObject({ problem: { details: { request_id: requestId } } });
-    expect(workoutPendingMutationSnapshot()).toEqual({ requestId, operation: "update" });
+    expect(workoutPendingMutationSnapshot()).toEqual({
+      collectionId: "workouts-test",
+      requestId,
+      operation: "update",
+    });
+    expect(recover).not.toHaveBeenCalled();
+    await expect(connectApi.exercises.create({
+      name: "Unsafe duplicate",
+      muscle_groups: [],
+      equipment: "none",
+      tracking: "reps_only",
+    })).rejects.toThrow("Recover the unsettled workout write");
 
     await recoverWorkoutPendingMutation();
     expect(update).toHaveBeenCalledOnce();
     expect(recover).toHaveBeenCalledWith({ timeoutMs: 20_000 });
+    expect(workoutConnect.connection).toHaveBeenCalledWith("workouts-test");
     expect(workoutPendingMutationSnapshot()).toBeNull();
+  });
+
+  it("requires explicit confirmation before forgetting pending recovery", () => {
+    vi.spyOn(boundConnection, "pendingMutations").mockReturnValue([{
+      requestId: "pending-before-forget",
+      operation: "update",
+      fingerprint: "fingerprint",
+      status: "outcome_unknown",
+      createdAt: new Date().toISOString(),
+      recover: vi.fn(),
+    }] as never);
+    const forget = vi.spyOn(workoutSession, "forget").mockReturnValue(connectSuccess(undefined));
+
+    expect(() => forgetWorkoutCollection("workouts-test")).toThrow(
+      "explicitly confirm disconnecting",
+    );
+    expect(forget).not.toHaveBeenCalled();
+
+    forgetWorkoutCollection("workouts-test", { confirmPending: true });
+    expect(forget).toHaveBeenCalledWith("workouts-test");
+  });
+
+  it("publishes a pending owner and permits only selecting it for recovery", async () => {
+    const currentInfo = boundConnection.info()!;
+    const ownerInfo: MdbaseConnectionInfo = {
+      ...currentInfo,
+      collectionId: "pending-owner",
+      displayName: "Pending owner",
+    };
+    const ownerConnection = {
+      collectionId: ownerInfo.collectionId,
+      authorizationCapabilities: () => ({
+        authorized: true,
+        sufficient: true,
+        grantedOperations: workoutOperations,
+        missingOperations: [],
+      }),
+      info: () => ownerInfo,
+      onConnectionChange: () => () => undefined,
+      pendingMutations: () => [{
+        requestId: "owner-request",
+        operation: "update",
+        fingerprint: "owner-fingerprint",
+        status: "outcome_unknown",
+        createdAt: new Date().toISOString(),
+        recover: vi.fn(),
+      }],
+      pendingMutation: vi.fn(),
+      assessCollectionSetup: async () => connectSuccess({
+        status: "current",
+        applicable: true,
+        typePacks: [],
+      } as never),
+    } as unknown as MdbaseConnection;
+    vi.mocked(workoutConnect.connections).mockReturnValue([currentInfo, ownerInfo]);
+    vi.mocked(workoutConnect.connection).mockImplementation((collectionId) =>
+      collectionId === ownerInfo.collectionId ? ownerConnection : boundConnection
+    );
+
+    refreshWorkoutPendingMutation();
+    expect(workoutPendingMutationSnapshot()).toMatchObject({
+      collectionId: "pending-owner",
+      requestId: "owner-request",
+    });
+    expect(() => selectWorkoutCollection("unrelated")).toThrow(
+      "Open pending-owner and recover request owner-request",
+    );
+    await expect(authorizeWorkoutCollection("choose")).rejects.toThrow(
+      "Open pending-owner and recover request owner-request",
+    );
+
+    expect(() => selectWorkoutCollection("pending-owner")).not.toThrow();
+    await vi.waitFor(() => {
+      const snapshot = workoutSession.getSnapshot();
+      expect("collectionId" in snapshot && snapshot.collectionId).toBe("pending-owner");
+    });
+  });
+
+  it("preserves typed and thrown startup failures for the mounted retry UI", async () => {
+    const timeout = connectProblem("timeout", "Startup timed out.", {
+      operationOutcome: "not_sent",
+    });
+    const start = vi.spyOn(workoutSession, "start")
+      .mockResolvedValueOnce(connectFailure(timeout))
+      .mockRejectedValueOnce(new Error("Startup transport crashed."));
+
+    await startWorkoutSession({ timeoutMs: 15_000 });
+    expect((workoutStartupFailureSnapshot() as { problem: unknown }).problem).toBe(timeout);
+
+    await startWorkoutSession({ timeoutMs: 15_000 });
+    expect(workoutStartupFailureSnapshot()).toEqual(new Error("Startup transport crashed."));
+    expect(start).toHaveBeenCalledTimes(2);
+    setWorkoutStartupFailure(null);
   });
 });
 

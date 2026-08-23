@@ -26,7 +26,11 @@ import type {
   QueryRecord,
   RecordDocument,
 } from "@mdbase-dev/connect";
-import { rememberWorkoutPendingMutation, requireWorkoutConnection } from "./connect";
+import {
+  rememberWorkoutPendingMutation,
+  requireWorkoutConnection,
+  runWorkoutMutation,
+} from "./connect";
 import { requireConnectOutcome } from "./connect-outcome";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
@@ -77,9 +81,13 @@ function contract(type: WorkoutType, provider?: string) {
   };
 }
 
-async function createProvider(type: WorkoutType, options: ConnectRequestOptions = {}): Promise<string> {
+async function createProvider(
+  type: WorkoutType,
+  connection: MdbaseConnection,
+  options: ConnectRequestOptions = {},
+): Promise<string> {
   const description = requireConnectOutcome(
-    await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
+    await connection.describe(withTimeout(options, READ_TIMEOUT_MS)),
   );
   const descriptor = description.contracts.find(
     (candidate) =>
@@ -103,9 +111,10 @@ async function read(
   type: WorkoutType,
   path: string,
   options: ConnectRequestOptions = {},
+  connection = requireWorkoutConnection(),
 ): Promise<RecordDocument<JsonObject>> {
   return validResult(
-    await requireWorkoutConnection().read(
+    await connection.read(
       { path, contract: contract(type) },
       withTimeout(options, READ_TIMEOUT_MS),
     ),
@@ -115,18 +124,19 @@ async function read(
 async function create(
   type: WorkoutType,
   input: Omit<Parameters<MdbaseConnection["create"]>[0], "type" | "contract">,
+  connection: MdbaseConnection,
   options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
-  const provider = await createProvider(type, options);
+  const provider = await createProvider(type, connection, options);
   try {
     return validResult(
-      await requireWorkoutConnection().create({
+      await connection.create({
         ...input,
         contract: contract(type, provider),
       }, withTimeout(options, WRITE_TIMEOUT_MS)),
     );
   } catch (error) {
-    rememberWorkoutPendingMutation(error);
+    rememberWorkoutPendingMutation(error, connection);
     throw error;
   } finally {
     invalidateConnectApiCache();
@@ -137,13 +147,14 @@ async function update(
   type: WorkoutType,
   path: string,
   patch: JsonObject,
+  connection: MdbaseConnection,
   options: ConnectRequestOptions = {},
 ): Promise<RecordDocument<JsonObject>> {
-  const current = await read(type, path, options);
+  const current = await read(type, path, options, connection);
   const { path: _path, revision: _revision, ...frontmatterPatch } = patch;
   try {
     return validResult(
-      await requireWorkoutConnection().update({
+      await connection.update({
         path,
         patch: frontmatterPatch,
         ifRevision: current.revision,
@@ -151,24 +162,29 @@ async function update(
       }, withTimeout(options, WRITE_TIMEOUT_MS)),
     );
   } catch (error) {
-    rememberWorkoutPendingMutation(error);
+    rememberWorkoutPendingMutation(error, connection);
     throw error;
   } finally {
     invalidateConnectApiCache();
   }
 }
 
-async function remove(type: WorkoutType, path: string, options: ConnectRequestOptions = {}): Promise<void> {
-  const current = await read(type, path, options);
+async function remove(
+  type: WorkoutType,
+  path: string,
+  connection: MdbaseConnection,
+  options: ConnectRequestOptions = {},
+): Promise<void> {
+  const current = await read(type, path, options, connection);
   try {
     validResult(
-      await requireWorkoutConnection().delete(
+      await connection.delete(
         { path, ifRevision: current.revision, contract: contract(type) },
         withTimeout(options, WRITE_TIMEOUT_MS),
       ),
     );
   } catch (error) {
-    rememberWorkoutPendingMutation(error);
+    rememberWorkoutPendingMutation(error, connection);
     throw error;
   } finally {
     invalidateConnectApiCache();
@@ -440,11 +456,11 @@ export const connectApi = {
     list: async (options: ConnectRequestOptions = {}) => (await allExerciseRows(options)).map((row) => record<Exercise>(row)),
     get: async (slug: string, options: ConnectRequestOptions = {}) => operationRecord<Exercise>(await read("exercise", `exercises/${slug}.md`, options), `exercises/${slug}.md`),
     history: exerciseHistory,
-    create: async (data: CreateExerciseInput, options: ConnectRequestOptions = {}) => {
+    create: (data: CreateExerciseInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
       const path = `exercises/${slugify(data.name)}.md`;
-      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }, options), path);
-    },
-    update: async (slug: string, data: Partial<CreateExerciseInput>, options: ConnectRequestOptions = {}) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data, options), `exercises/${slug}.md`),
+      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }, connection, options), path);
+    }),
+    update: (slug: string, data: Partial<CreateExerciseInput>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data, connection, options), `exercises/${slug}.md`)),
     lastSets: async (slugs: string[], options: ConnectRequestOptions = {}) => {
       const sessionRows = await allSessionRows(options);
       const remaining = new Set(slugs);
@@ -465,12 +481,12 @@ export const connectApi = {
   },
   quickLogs: {
     list: async (limit = 50, options: ConnectRequestOptions = {}) => (await allQuickLogRows(options)).slice(0, limit).map((row) => record<QuickLog>(row)),
-    create: async (data: CreateQuickLogInput, options: ConnectRequestOptions = {}) => {
+    create: (data: CreateQuickLogInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
       const now = new Date();
       const path = `quick-logs/${timestamp(now)}.md`;
       const frontmatter = { ...data, exercise: wikilink("exercises", data.exercise), logged_at: now.toISOString() };
-      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }, options), path);
-    },
+      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }, connection, options), path);
+    }),
   },
   sessions: {
     list: async (limit = 20, offset = 0, options: ConnectRequestOptions = {}) => {
@@ -479,7 +495,7 @@ export const connectApi = {
       return { sessions, total: all.length, hasMore: offset + sessions.length < all.length };
     },
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Session>(await read("session", `sessions/${id}.md`, options), `sessions/${id}.md`),
-    create: async (data: CreateSessionInput, options: ConnectRequestOptions = {}) => {
+    create: (data: CreateSessionInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
       const now = new Date();
       const id = timestamp(now);
       const path = `sessions/${id}.md`;
@@ -489,12 +505,12 @@ export const connectApi = {
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
         ...(data.plan ? { plan: wikilink("plans", data.plan) } : {}),
       };
-      const session = operationRecord<Session>(await create("session", { path, frontmatter }, options), path);
-      if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) }, options);
+      const session = operationRecord<Session>(await create("session", { path, frontmatter }, connection, options), path);
+      if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) }, connection, options);
       return session;
-    },
-    update: async (id: string, data: Partial<Session>, options: ConnectRequestOptions = {}) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data, options), `sessions/${id}.md`),
-    delete: async (id: string, options: ConnectRequestOptions = {}) => { await remove("session", `sessions/${id}.md`, options); return { ok: true }; },
+    }),
+    update: (id: string, data: Partial<Session>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data, connection, options), `sessions/${id}.md`)),
+    delete: (id: string, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => { await remove("session", `sessions/${id}.md`, connection, options); return { ok: true }; }),
   },
   plans: {
     list: async (status?: string, options: ConnectRequestOptions = {}) => {
@@ -504,7 +520,7 @@ export const connectApi = {
       return plans.sort((left, right) => right.date.localeCompare(left.date));
     },
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Plan>(await read("plan", `plans/${id}.md`, options), `plans/${id}.md`),
-    create: async (data: CreatePlanInput, options: ConnectRequestOptions = {}) => {
+    create: (data: CreatePlanInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
       const date = data.date || dateKey(new Date());
       const id = `${date}-${slugify(data.title)}`;
       const path = `plans/${id}.md`;
@@ -514,20 +530,20 @@ export const connectApi = {
         status: "scheduled",
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
       };
-      return operationRecord<Plan>(await create("plan", { path, frontmatter }, options), path);
-    },
-    update: async (id: string, data: Partial<Plan>, options: ConnectRequestOptions = {}) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data, options), `plans/${id}.md`),
+      return operationRecord<Plan>(await create("plan", { path, frontmatter }, connection, options), path);
+    }),
+    update: (id: string, data: Partial<Plan>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data, connection, options), `plans/${id}.md`)),
   },
   planTemplates: {
     list: async (options: ConnectRequestOptions = {}) => (await allTemplateRows(options)).map((row) => record<PlanTemplate>(row)),
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<PlanTemplate>(await read("plan-template", `plan-templates/${id}.md`, options), `plan-templates/${id}.md`),
-    create: async (data: CreatePlanTemplateInput, options: ConnectRequestOptions = {}) => {
+    create: (data: CreatePlanTemplateInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
       const path = `plan-templates/${slugify(data.title)}.md`;
       const frontmatter = { ...data, exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })) };
-      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }, options), path);
-    },
-    update: async (id: string, data: Partial<PlanTemplate>, options: ConnectRequestOptions = {}) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data, options), `plan-templates/${id}.md`),
-    delete: async (id: string, options: ConnectRequestOptions = {}) => { await remove("plan-template", `plan-templates/${id}.md`, options); return { ok: true }; },
+      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }, connection, options), path);
+    }),
+    update: (id: string, data: Partial<PlanTemplate>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data, connection, options), `plan-templates/${id}.md`)),
+    delete: (id: string, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => { await remove("plan-template", `plan-templates/${id}.md`, connection, options); return { ok: true }; }),
   },
   stats: { get: stats, weekly: weeklyStats },
   today: async (timeZone?: string, options: ConnectRequestOptions = {}) => {

@@ -55,7 +55,7 @@ function useCollection(collectionId: string) {
       typePacks: [],
     } as never),
   } as never);
-  workoutSession.select(collectionId, { history: "replace" });
+  requireConnectOutcome(workoutSession.select(collectionId, { history: "replace" }));
 }
 
 describe("workout cache", () => {

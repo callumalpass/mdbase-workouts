@@ -17,6 +17,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      manifest-sha256: ${{ steps.manifest.outputs.sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -45,6 +47,10 @@ jobs:
       - name: Build Pages application
         run: npm run build
 
+      - name: Record deployed manifest digest
+        id: manifest
+        run: node -e 'const { createHash } = require("node:crypto"); const { appendFileSync, readFileSync } = require("node:fs"); const digest = createHash("sha256").update(readFileSync("dist/.well-known/mdbase-app.json")).digest("hex"); appendFileSync(process.env.GITHUB_OUTPUT, `sha256=${digest}\n`);'
+
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
@@ -72,6 +78,43 @@ jobs:
       - name: Verify application manifest
         env:
           MANIFEST_URL: https://callumalpass.github.io/mdbase-workouts/.well-known/mdbase-app.json?commit=${{ github.sha }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.test.outputs.manifest-sha256 }}
         run: |
-          curl --fail --silent --show-error --retry 5 --retry-all-errors "$MANIFEST_URL" --output "$RUNNER_TEMP/mdbase-app.json"
-          node -e 'const manifest = require(process.env.RUNNER_TEMP + "/mdbase-app.json"); if (manifest.name !== "MDBase Workouts") process.exit(1)'
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          let source;
+          for (let attempt = 1; attempt <= 10; attempt += 1) {
+            try {
+              const response = await fetch(`${process.env.MANIFEST_URL}&attempt=${attempt}`, { cache: "no-store" });
+              if (response.ok) {
+                const candidate = Buffer.from(await response.arrayBuffer());
+                const digest = createHash("sha256").update(candidate).digest("hex");
+                if (digest === process.env.EXPECTED_MANIFEST_SHA256) {
+                  source = candidate;
+                  break;
+                }
+              }
+            } catch {}
+            if (attempt < 10) await new Promise((resolve) => setTimeout(resolve, 2_000));
+          }
+          if (!source) {
+            throw new Error("The deployed manifest does not match the uploaded Pages artifact.");
+          }
+          const manifest = JSON.parse(source);
+          const appUrl = "https://callumalpass.github.io/mdbase-workouts/";
+          const contracts = ["exercise", "plan", "plan-template", "quick-log", "session"]
+            .map((name) => `mdbase.workouts.${name}`);
+          const actualContracts = manifest.requirements?.contracts
+            ?.map(({ id, version }) => `${id}@${version}`)
+            .sort();
+          const expectedContracts = contracts.map((id) => `${id}@1.0.0`).sort();
+          if (
+            manifest.id !== "dev.mdbase.workouts" ||
+            manifest.name !== "MDBase Workouts" ||
+            manifest.homepage !== appUrl ||
+            JSON.stringify(manifest.redirect_uris) !== JSON.stringify([appUrl]) ||
+            manifest.requirements?.access !== "full_collection" ||
+            JSON.stringify(actualContracts) !== JSON.stringify(expectedContracts) ||
+            manifest.provisions?.type_packs?.length !== 1
+          ) throw new Error("The deployed Workouts manifest does not match the production declaration.");
+          NODE
