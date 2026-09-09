@@ -36,16 +36,12 @@
       }
     ],
     "capabilities": {
-      "contract_version": 1,
+      "contract_version": 2,
       "required": [
-        "collection.inspect",
-        "records.read",
-        "records.query",
+        "collection.read",
         "records.create",
-        "records.update",
-        "records.delete",
-        "definitions.contracts.current",
-        "collection.setup.apply"
+        "records.edit",
+        "records.delete"
       ]
     }
   },

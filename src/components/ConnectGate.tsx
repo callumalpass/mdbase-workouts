@@ -111,7 +111,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   }
 
   async function applyCollectionSetup() {
-    if (snapshot.status !== "setup_review_required" || applyingDefinitions) return;
+    if (snapshot.status !== "setup_review_required" || !snapshot.update.canApply || applyingDefinitions) return;
     setApplyingDefinitions(true);
     setError("");
     try {
@@ -170,7 +170,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         ? "Access to this collection was removed. Choose it again or open another collection."
         : "This bookmarked collection is not authorized on this device."
     : snapshot.status === "authorization_required"
-      ? "This collection needs updated access for the current workout contracts. Review the changes to continue."
+      ? "This collection needs updated access for Workouts. Review and approve the changes to continue; saved access is not expanded automatically."
       : snapshot.status === "blocked"
         ? snapshot.problem.message
         : "";

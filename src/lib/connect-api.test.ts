@@ -26,17 +26,15 @@ import { operationsForApplicationCapabilities } from "@mdbase-dev/connect-protoc
 import { requireConnectOutcome } from "./connect-outcome";
 import workoutManifest from "../../public/.well-known/mdbase-app.json";
 
+// Exercise the application's actual capability intent. This requires the
+// reviewed v2 bridge SDK; do not hide an incompatible pin behind v1 fixtures.
 const workoutOperations = operationsForApplicationCapabilities({
-  contract_version: 1,
+  contract_version: 2,
   required: [
-    "collection.inspect",
-    "records.read",
-    "records.query",
+    "collection.read",
     "records.create",
-    "records.update",
+    "records.edit",
     "records.delete",
-    "definitions.contracts.current",
-    "collection.setup.apply",
   ],
 });
 
