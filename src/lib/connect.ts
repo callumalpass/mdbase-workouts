@@ -42,6 +42,8 @@ export const workoutConnect = new MdbaseConnect({
   redirectUri: appRoot.href,
 });
 
+// The SDK derives v2 authorization (including exact provision-bound setup) from
+// the declaration. Do not pass legacy operations or retry with a v1 declaration.
 export const workoutSession = workoutConnect.application({
   selection: new MdbaseBrowserSelection({
     fallbackPath: appRoot.pathname,

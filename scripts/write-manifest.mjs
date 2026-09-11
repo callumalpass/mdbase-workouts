@@ -72,22 +72,17 @@ await writeFile(target, `${JSON.stringify({
   homepage: appUrl,
   redirect_uris: [appUrl],
   requirements: {
-    // Installing a bundled type pack is a collection-wide, explicitly approved
-    // definition change. Record operations remain limited to the capabilities
-    // below even though provisioning requires full-collection scope.
+    // Bundled setup is declaration-bound authority from provisions, not broad
+    // definitions.manage access. Preserve its full-collection scope.
     access: "full_collection",
     contracts: requiredTypes.map(requirement),
     capabilities: {
-      contract_version: 1,
+      contract_version: 2,
       required: [
-        "collection.inspect",
-        "records.read",
-        "records.query",
+        "collection.read",
         "records.create",
-        "records.update",
+        "records.edit",
         "records.delete",
-        "definitions.contracts.current",
-        "collection.setup.apply",
       ],
     },
   },
