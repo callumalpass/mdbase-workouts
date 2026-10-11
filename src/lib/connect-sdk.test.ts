@@ -59,7 +59,7 @@ function runtime() {
   return { connect, session, selection, navigate };
 }
 
-describe("packed beta.96 Workouts SDK contract (hermetic)", () => {
+describe("Workouts Connect SDK contract (hermetic)", () => {
   it("derives exact record intent plus provision-bound setup in the signed authorization request", async () => {
     const { session, navigate } = runtime();
     expect(requireConnectSuccess(await session.start()).status).toBe("unselected");
