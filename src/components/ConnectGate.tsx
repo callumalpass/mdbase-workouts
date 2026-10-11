@@ -71,12 +71,26 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     if ("collectionId" in snapshot) refreshWorkoutPendingMutation();
   }, [snapshot]);
 
-  if (snapshot.status === "ready") {
-    const connection = workoutSession.connection();
-    if (!connection) throw new Error("The ready workout session has no connection.");
+  // The SDK re-checks setup whenever connection info changes (including the
+  // route switching between hosted and direct access). Keep a collection that
+  // already verified mounted through that re-check: unmounting aborts the
+  // direct-access probe, which changes the route again and restarts the check.
+  const verifiedCollection = useRef<string | null>(null);
+  if (snapshot.status === "ready") verifiedCollection.current = snapshot.collectionId;
+  else if (snapshot.status !== "checking_setup" || snapshot.collectionId !== verifiedCollection.current) {
+    verifiedCollection.current = null;
+  }
+
+  const connection = snapshot.status === "ready" || verifiedCollection.current
+    ? workoutSession.connection()
+    : null;
+  if (snapshot.status === "ready" && !connection) {
+    throw new Error("The ready workout session has no connection.");
+  }
+  if (connection && connection.collectionId === ("collectionId" in snapshot ? snapshot.collectionId : null)) {
     return (
       <ConnectedCollection
-        key={snapshot.collectionId}
+        key={connection.collectionId}
         connection={connection}
       >
         {children}

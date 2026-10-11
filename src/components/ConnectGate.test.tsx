@@ -19,6 +19,7 @@ const gateway = vi.hoisted(() => {
   };
   return {
     applySetup: vi.fn(),
+    connection: null as Record<string, unknown> | null,
     authorize: vi.fn(() => new Promise<never>(() => undefined)),
     pending: null as Record<string, unknown> | null,
     recover: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock("../lib/connect", () => ({
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
   workoutSession: {
     authorize: gateway.authorize,
+    connection: vi.fn(() => gateway.connection),
     select: gateway.select,
     start: gateway.start,
   },
@@ -63,6 +65,7 @@ import ConnectGate from "./ConnectGate";
 beforeEach(() => {
   gateway.snapshot = gateway.unavailableSnapshot;
   gateway.pending = null;
+  gateway.connection = null;
   gateway.startupFailure = null;
   gateway.authorize.mockClear();
   gateway.select.mockClear();
@@ -178,4 +181,33 @@ it("offers exact setup recovery and blocks setup resubmission while it is pendin
   expect(screen.getByRole("button", { name: "Recover setup change" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "Apply workout definitions" })).toBeDisabled();
   expect(gateway.applySetup).not.toHaveBeenCalled();
+});
+
+it("keeps a verified collection open while the session re-checks setup", () => {
+  const checkDirectAccess = vi.fn((_options: { signal: AbortSignal }) => new Promise<never>(() => undefined));
+  gateway.connection = { collectionId: "workouts", checkDirectAccess };
+  const context = { collectionId: "workouts", connections: [] };
+  gateway.snapshot = { status: "ready", ...context };
+  const view = render(<ConnectGate><p>Connected</p></ConnectGate>);
+  expect(screen.getByText("Connected")).toBeTruthy();
+  const signal = checkDirectAccess.mock.calls[0][0].signal;
+
+  // Connection info changes (e.g. hosted -> direct route) make the SDK re-check setup.
+  gateway.snapshot = { status: "checking_setup", ...context };
+  view.rerender(<ConnectGate><p>Connected</p></ConnectGate>);
+  expect(screen.getByText("Connected")).toBeTruthy();
+  expect(signal.aborted).toBe(false);
+
+  gateway.snapshot = { status: "ready", ...context };
+  view.rerender(<ConnectGate><p>Connected</p></ConnectGate>);
+  expect(checkDirectAccess).toHaveBeenCalledTimes(1);
+  expect(signal.aborted).toBe(false);
+});
+
+it("shows the setup check before a collection has verified", () => {
+  gateway.connection = { collectionId: "workouts", checkDirectAccess: vi.fn() };
+  gateway.snapshot = { status: "checking_setup", collectionId: "workouts", connections: [] };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+  expect(screen.queryByText("Connected")).toBeNull();
+  expect(screen.getByRole("button", { name: "Checking workout definitions…" })).toBeTruthy();
 });
