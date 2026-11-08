@@ -2,7 +2,7 @@
 
 A workout tracking application that stores all data as markdown files with YAML frontmatter, managed by [mdbase](https://github.com/callumalpass/mdbase-spec). Users plan workouts, log sessions with per-set tracking, record quick one-off exercises, and browse their history -- all persisted as human-readable `.md` files on disk rather than in a traditional database.
 
-The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase-dev/connect` browser SDK to open a compatible local or hosted workout collection.
+The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase-dev/sdk` browser SDK to open a cloud copy, a Private collection, or a local workout collection.
 
 This project is an implementation of [mdbase-spec](https://github.com/callumalpass/mdbase-spec).
 
@@ -16,7 +16,7 @@ This project is an implementation of [mdbase-spec](https://github.com/callumalpa
 
 The app has three layers:
 
-- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. The hosted build reads and writes through `@mdbase-dev/connect`; local development uses the JSON API unless Connect is explicitly enabled. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
+- **Frontend** (`src/`): A single-page React application built with Vite, TypeScript, and Tailwind CSS. The hosted build reads and writes through `@mdbase-dev/sdk`; local development uses the JSON API unless Connect is explicitly enabled. The UI is a three-tab layout (Today, Calendar, History) with bottom navigation. Full-screen sheet components handle workout logging, plan creation, and quick log entry.
 - **Backend API** (`server/`): An optional Hono server for local and self-hosted development. Each resource type (exercises, sessions, plans, plan-templates, quick-logs) has its own route file exposing standard CRUD endpoints. A `/api/today` endpoint aggregates today's plans, sessions, quick logs, and available templates into a single response. The server uses `@callumalpass/mdbase` to read, write, query, and validate markdown records.
 - **Data storage** (`data/`): Plain markdown files organized into folders by type. Each file has YAML frontmatter containing structured fields and an optional markdown body. Type definitions in `data/_types/*.md` declare the schema for each record type. Cross-record references use wikilink syntax (e.g. `[[exercises/bench-press]]`).
 
@@ -233,17 +233,12 @@ The manifest also publishes one transactional `mdbase.workouts` type pack. Durin
 
 Workouts deliberately performs record operations through contract projections, without requesting Markdown bodies, unmapped frontmatter, or saved views. Sorting and filtering therefore happen over normalized contract results in the app. The grant itself is nevertheless full-collection because definition setup cannot be represented by a contract-only grant; users should review that broader collection authorization before approving it.
 
-The browser keeps its authorization in local storage. On the same computer as the local connector, Settings can enable direct access so reads avoid the relay and the encrypted local grant remains usable after the relay login expires. The UI also keeps small, collection-scoped snapshots of Today, stats, exercises, and the first history page. These snapshots are cleared after writes and on disconnect, and are refreshed from mdbase in the background.
+The SDK lists cloud copies and Private collections the account may use. Cloud copies are served by their hosted replica; Private collections are served through the relay by one of the account's online computers. The UI keeps small, collection-scoped snapshots of Today, stats, exercises, and the first history page. These snapshots are cleared after writes and on disconnect, and are refreshed from mdbase in the background.
 
-To exercise Connect against a local control plane:
-
-```bash
-MDBASE_WORKOUTS_ORIGIN=http://localhost:5187 \
-MDBASE_WORKOUTS_BASE_PATH=/ \
-VITE_MDBASE_CONNECT=1 \
-VITE_MDBASE_CONNECT_URL=http://localhost:18789 \
-npm run dev:fe -- --host 127.0.0.1 --port 5187 --strictPort
-```
+The published `@mdbase-dev/sdk` package embeds production release trust. Local
+development against a local control plane needs a separately built local SDK
+archive; setting a Connect URL is not enough to retarget the published package.
+Local development without Connect continues to use the JSON API.
 
 For an isolated staging build, use the fail-closed dev deployment. All three URLs
 are mandatory, and the command rejects the production application and Connect
@@ -256,8 +251,9 @@ MDBASE_WORKOUTS_DEV_LOOPBACK_URL=http://127.0.0.1:28486 \
 npm run deploy:dev
 ```
 
-The command builds an HTTPS manifest, rejects production origins, and deploys
-only to the `mdbase-workouts-staging` Cloudflare Pages project. The GitHub Actions
+The command builds an HTTPS manifest, rejects production origins, swaps in the
+version-pinned `@mdbase-dev/sdk-staging` archive, and deploys only to the
+`mdbase-workouts-staging` Cloudflare Pages project. The GitHub Actions
 workflow typechecks, runs unit and browser tests, builds the static app, and
 deploys `dist/` to GitHub Pages on pushes to `main`. Branch review and staging
 missions use `deploy:dev`; they do not replace the production Pages site.

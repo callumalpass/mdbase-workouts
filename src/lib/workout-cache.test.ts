@@ -1,9 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { MdbaseAppManifest, MdbaseConnectionInfo } from "@mdbase-dev/connect";
-import { connectSuccess } from "@mdbase-dev/connect-testing";
-import { workoutConnect, workoutSession } from "./connect";
-import { requireConnectOutcome } from "./connect-outcome";
-import workoutManifest from "../../public/.well-known/mdbase-app.json";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Mdbase } from "@mdbase-dev/sdk";
+import { setWorkoutEntryForTests } from "./connect";
 import {
   clearWorkoutCache,
   loadWorkoutCache,
@@ -11,52 +8,16 @@ import {
   writeWorkoutCache,
 } from "./workout-cache";
 
-beforeAll(async () => {
-  vi.spyOn(workoutConnect, "register").mockResolvedValue(connectSuccess({
-    id: "workouts-test-application",
-    family_identity: "bundle:dev.mdbase.workouts",
-    manifest_digest: "0".repeat(64),
-    name: "MDBase Workouts",
-    homepage: "https://callumalpass.github.io/mdbase-workouts/",
-    requirements: workoutManifest.requirements as NonNullable<MdbaseAppManifest["requirements"]>,
-  }));
-  vi.spyOn(workoutConnect, "manifest").mockResolvedValue(
-    connectSuccess(workoutManifest as MdbaseAppManifest),
-  );
-  requireConnectOutcome(await workoutSession.start());
-});
-
-afterAll(() => workoutSession.destroy());
-
 function useCollection(collectionId: string) {
-  const info: MdbaseConnectionInfo = {
-    collectionId,
-    displayName: collectionId,
-    operations: [],
-    scope: { contracts: [], access: "full_collection" },
-    authority: { kind: "connector", durability: "computer" },
-    route: "relay",
-    directAccess: "permission_required",
-  };
-  vi.spyOn(workoutConnect, "connections").mockReturnValue([info]);
-  vi.spyOn(workoutConnect, "connection").mockReturnValue({
-    collectionId,
-    authorizationCapabilities: () => ({
-      authorized: true,
-      sufficient: true,
-      grantedOperations: [],
-      missingOperations: [],
-    }),
-    info: () => info,
-    onConnectionChange: () => () => undefined,
-    assessCollectionSetup: async () => connectSuccess({
-      status: "current",
-      applicable: true,
-      typePacks: [],
-    } as never),
-  } as never);
-  requireConnectOutcome(workoutSession.select(collectionId, { history: "replace" }));
+  setWorkoutEntryForTests({
+    getSnapshot: () => ({ phase: { kind: "ready", collectionId } }),
+  } as unknown as Mdbase);
 }
+
+afterEach(() => {
+  localStorage.clear();
+  clearWorkoutCache();
+});
 
 describe("workout cache", () => {
   it("keeps cached records scoped to the selected collection", () => {
@@ -64,7 +25,6 @@ describe("workout cache", () => {
     writeWorkoutCache("today", { sessions: ["a"] });
     expect(readWorkoutCache("today")?.value).toEqual({ sessions: ["a"] });
 
-    vi.restoreAllMocks();
     useCollection("collection-b");
     expect(readWorkoutCache("today")).toBeNull();
 
@@ -72,7 +32,6 @@ describe("workout cache", () => {
     clearWorkoutCache();
     expect(readWorkoutCache("today")).toBeNull();
 
-    vi.restoreAllMocks();
     useCollection("collection-a");
     expect(readWorkoutCache("today")?.value).toEqual({ sessions: ["a"] });
   });

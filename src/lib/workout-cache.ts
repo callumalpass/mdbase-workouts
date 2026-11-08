@@ -19,8 +19,8 @@ function scope(collectionId = selectedCollectionId()): string {
 }
 
 function selectedCollectionId(): string {
-  const snapshot = workoutSnapshot();
-  return "collectionId" in snapshot ? snapshot.collectionId : "local";
+  const phase = workoutSnapshot().phase;
+  return phase.kind === "ready" ? phase.collectionId : "local";
 }
 
 function cachePrefix(collectionId?: string): string {

@@ -11,6 +11,7 @@ const basePath = normalizeBasePath(process.env.MDBASE_WORKOUTS_BASE_PATH ?? defa
 const appUrl = new URL(basePath, `${origin}/`).href;
 const projectRoot = resolve(import.meta.dirname, "..");
 const target = resolve(projectRoot, "public", ".well-known", "mdbase-app.json");
+const sourceTarget = resolve(projectRoot, "src", "generated", "mdbase-app.json");
 const requiredTypes = [
   { name: "exercise", contract: "mdbase.workouts.exercise" },
   { name: "plan", contract: "mdbase.workouts.plan" },
@@ -65,7 +66,8 @@ const requirement = ({ contract }) => {
 };
 
 await mkdir(resolve(target, ".."), { recursive: true });
-await writeFile(target, `${JSON.stringify({
+await mkdir(resolve(sourceTarget, ".."), { recursive: true });
+const serialized = `${JSON.stringify({
   manifest_version: 1,
   id: "dev.mdbase.workouts",
   name: "MDBase Workouts",
@@ -115,7 +117,11 @@ await writeFile(target, `${JSON.stringify({
       },
     ],
   },
-}, null, 2)}\n`);
+}, null, 2)}\n`;
+await Promise.all([
+  writeFile(target, serialized),
+  writeFile(sourceTarget, serialized),
+]);
 
 function digest(document) {
   return `sha256:${createHash("sha256").update(document).digest("hex")}`;

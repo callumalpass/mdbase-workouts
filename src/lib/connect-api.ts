@@ -16,26 +16,28 @@ import type {
   StatsResponse,
   WeeklyStatsResponse,
 } from "./types";
-import type {
-  ConnectOutcome,
-  ConnectRequestOptions,
-  JsonObject,
-  MdbaseConnection,
-  QueryInput,
-  QueryPage,
-  QueryRecord,
-  RecordDocument,
-} from "@mdbase-dev/connect";
+import {
+  toPlain,
+  type ContractQueryResult,
+  type ContractRecordView,
+  type ContractSelector,
+  type MdbaseClient,
+  type PlainValue,
+} from "@mdbase-dev/sdk";
 import {
   rememberWorkoutPendingMutation,
   requireWorkoutConnection,
   runWorkoutMutation,
+  type ConnectRequestOptions,
+  type WorkoutConnection,
 } from "./connect";
-import { requireConnectOutcome } from "./connect-outcome";
 import { computeWorkoutStats, computeWorkoutWeeklyStats } from "./workout-stats";
 import { clearWorkoutCache } from "./workout-cache";
 
-type QueryRow = QueryRecord<JsonObject>;
+interface QueryRow {
+  path: string;
+  frontmatter: Record<string, unknown>;
+}
 type WorkoutType =
   | "exercise"
   | "plan"
@@ -55,7 +57,7 @@ const CONTRACTS: Record<WorkoutType, string> = {
 const SOURCE_FRESH_MS = 30_000;
 const READ_TIMEOUT_MS = 10_000;
 const WRITE_TIMEOUT_MS = 20_000;
-const QUERY_PAGE_SIZE = 500;
+const QUERY_PAGE_SIZE = 128;
 const MAX_SOURCE_ROWS = 100_000;
 let cacheGeneration = 0;
 interface SourceCacheEntry {
@@ -68,12 +70,9 @@ interface SourceCacheEntry {
   subscribers?: number;
 }
 const sourceCache = new Map<string, SourceCacheEntry>();
+const providerCache = new Map<string, string>();
 
-function validResult<Result>(outcome: ConnectOutcome<Result>): Result {
-  return requireConnectOutcome(outcome);
-}
-
-function contract(type: WorkoutType, provider?: string) {
+function contract(type: WorkoutType, provider?: string): ContractSelector {
   return {
     id: CONTRACTS[type],
     version: CONTRACT_VERSION,
@@ -81,30 +80,48 @@ function contract(type: WorkoutType, provider?: string) {
   };
 }
 
-async function createProvider(
+function plain(fields: Record<string, unknown> | Map<string, unknown>): Record<string, unknown> {
+  return toPlain(fields as never) as Record<string, unknown>;
+}
+
+function plainInput(value: Record<string, unknown>): Record<string, PlainValue> {
+  return value as Record<string, PlainValue>;
+}
+
+async function providerFor(
   type: WorkoutType,
-  connection: MdbaseConnection,
+  client: MdbaseClient,
   options: ConnectRequestOptions = {},
 ): Promise<string> {
-  const description = requireConnectOutcome(
-    await connection.describe(withTimeout(options, READ_TIMEOUT_MS)),
-  );
+  const key = `${client.collection}:${type}`;
+  const cached = providerCache.get(key);
+  if (cached) return cached;
+  const provider = await discoverProvider(type, client, options);
+  providerCache.set(key, provider);
+  return provider;
+}
+
+async function discoverProvider(
+  type: WorkoutType,
+  client: MdbaseClient,
+  options: ConnectRequestOptions = {},
+): Promise<string> {
+  const description = await client.describe(signalFor(options, READ_TIMEOUT_MS));
   const descriptor = description.contracts.find(
     (candidate) =>
       candidate.id === CONTRACTS[type] &&
       candidate.version === CONTRACT_VERSION,
   );
-  if (!descriptor?.implementations.length) {
-    throw new Error(
-      `This collection does not implement ${CONTRACTS[type]} ${CONTRACT_VERSION}.`,
-    );
+  if (!descriptor?.implementedBy.length) {
+    // Replicas that do not describe contract implementations still resolve the
+    // app's own default type by name; an absent contract is refused by the
+    // replica's contract query.
+    return type;
   }
-  const providers = [...descriptor.implementations].sort((left, right) =>
-    left.typeName.localeCompare(right.typeName)
+  const providers = [...descriptor.implementedBy].sort((left, right) =>
+    left.localeCompare(right),
   );
-  return (
-    providers.find((provider) => provider.typeName === type) ?? providers[0]
-  ).typeName;
+  return providers.find((provider) => provider === type) ?? providers[0];
 }
 
 async function read(
@@ -112,29 +129,29 @@ async function read(
   path: string,
   options: ConnectRequestOptions = {},
   connection = requireWorkoutConnection(),
-): Promise<RecordDocument<JsonObject>> {
-  return validResult(
-    await connection.read(
-      { path, contract: contract(type) },
-      withTimeout(options, READ_TIMEOUT_MS),
-    ),
+): Promise<ContractRecordView> {
+  return connection.records.getContract(
+    { path },
+    contract(type, await providerFor(type, connection.records, options)),
+    signalFor(options, READ_TIMEOUT_MS),
   );
 }
 
 async function create(
   type: WorkoutType,
-  input: Omit<Parameters<MdbaseConnection["create"]>[0], "type" | "contract">,
-  connection: MdbaseConnection,
+  input: { path: string; frontmatter: Record<string, unknown> },
+  connection: WorkoutConnection,
   options: ConnectRequestOptions = {},
-): Promise<RecordDocument<JsonObject>> {
-  const provider = await createProvider(type, connection, options);
+): Promise<ContractRecordView> {
+  const provider = await providerFor(type, connection.records, options);
   try {
-    return validResult(
-      await connection.create({
-        ...input,
-        contract: contract(type, provider),
-      }, withTimeout(options, WRITE_TIMEOUT_MS)),
-    );
+    const write = await connection.records.create({
+      path: input.path,
+      frontmatter: plainInput(input.frontmatter),
+      contract: contract(type, provider),
+    }, { signal: signalFor(options, WRITE_TIMEOUT_MS) });
+    await write.confirmed;
+    return await read(type, input.path, options, connection);
   } catch (error) {
     rememberWorkoutPendingMutation(error, connection);
     throw error;
@@ -146,21 +163,24 @@ async function create(
 async function update(
   type: WorkoutType,
   path: string,
-  patch: JsonObject,
-  connection: MdbaseConnection,
+  patch: Record<string, unknown>,
+  connection: WorkoutConnection,
   options: ConnectRequestOptions = {},
-): Promise<RecordDocument<JsonObject>> {
+): Promise<ContractRecordView> {
   const current = await read(type, path, options, connection);
   const { path: _path, revision: _revision, ...frontmatterPatch } = patch;
   try {
-    return validResult(
-      await connection.update({
-        path,
-        patch: frontmatterPatch,
+    const write = await connection.records.update(
+      { path },
+      {
+        patch: plainInput(frontmatterPatch),
         ifRevision: current.revision,
-        contract: contract(type),
-      }, withTimeout(options, WRITE_TIMEOUT_MS)),
+        contract: contract(type, await providerFor(type, connection.records, options)),
+      },
+      { signal: signalFor(options, WRITE_TIMEOUT_MS) },
     );
+    await write.confirmed;
+    return await read(type, path, options, connection);
   } catch (error) {
     rememberWorkoutPendingMutation(error, connection);
     throw error;
@@ -172,17 +192,20 @@ async function update(
 async function remove(
   type: WorkoutType,
   path: string,
-  connection: MdbaseConnection,
+  connection: WorkoutConnection,
   options: ConnectRequestOptions = {},
 ): Promise<void> {
   const current = await read(type, path, options, connection);
   try {
-    validResult(
-      await connection.delete(
-        { path, ifRevision: current.revision, contract: contract(type) },
-        withTimeout(options, WRITE_TIMEOUT_MS),
-      ),
+    const write = await connection.records.delete(
+      { path },
+      {
+        ifRevision: current.revision,
+        contract: contract(type, await providerFor(type, connection.records, options)),
+        signal: signalFor(options, WRITE_TIMEOUT_MS),
+      },
     );
+    await write.confirmed;
   } catch (error) {
     rememberWorkoutPendingMutation(error, connection);
     throw error;
@@ -194,6 +217,7 @@ async function remove(
 export function invalidateConnectApiCache(): void {
   cacheGeneration += 1;
   sourceCache.clear();
+  providerCache.clear();
   clearWorkoutCache();
 }
 
@@ -201,14 +225,10 @@ function record<T>(row: QueryRow): T {
   return { path: row.path, ...row.frontmatter } as T;
 }
 
-function operationRecord<T>(value: RecordDocument<JsonObject>, fallbackPath: string): T {
-  const frontmatter = value.frontmatter && typeof value.frontmatter === "object"
-    ? value.frontmatter as Record<string, unknown>
-    : {};
-  const file = value.file && typeof value.file === "object" ? value.file as { path?: string } : undefined;
+function operationRecord<T>(value: ContractRecordView, fallbackPath: string): T {
   return {
-    ...frontmatter,
-    path: String(value.path ?? file?.path ?? fallbackPath),
+    ...plain(value.fields),
+    path: String(value.path ?? fallbackPath),
     revision: value.revision,
   } as T;
 }
@@ -246,11 +266,12 @@ function dateKey(value: string | Date, timeZone = Intl.DateTimeFormat().resolved
 
 async function rows(
   type: WorkoutType,
-  extra: Pick<QueryInput, "frontmatterMode"> = {},
+  _extra: Record<string, never> = {},
   options: ConnectRequestOptions = {},
 ): Promise<QueryRow[]> {
-  const collectionId = requireWorkoutConnection().collectionId;
-  const key = `${type}:${JSON.stringify(extra)}`;
+  const connection = requireWorkoutConnection();
+  const collectionId = connection.collectionId;
+  const key = `${type}:`;
   const cached = sourceCache.get(key);
   if (cached?.collectionId === collectionId) {
     if (cached.value && cached.savedAt && Date.now() - cached.savedAt < SOURCE_FRESH_MS) {
@@ -268,10 +289,13 @@ async function rows(
     controller,
     subscribers: 0,
   };
-  const pending = collectQueryPages(type, extra, {
-    ...sharedOptions,
-    signal: controller.signal,
-  })
+  const pending = (async () => {
+    const provider = await providerFor(type, connection.records, sharedOptions);
+    return collectQueryPages(type, provider, {
+      ...sharedOptions,
+      signal: controller.signal,
+    });
+  })()
     .then((value) => {
       if (sourceCache.get(key) === entry && generation === cacheGeneration) {
         sourceCache.set(key, { collectionId, generation, savedAt: Date.now(), value });
@@ -305,28 +329,39 @@ async function awaitSharedRows(
 
 async function collectQueryPages(
   type: WorkoutType,
-  extra: Pick<QueryInput, "frontmatterMode">,
+  provider: string,
   options: ConnectRequestOptions,
 ): Promise<QueryRow[]> {
   const rows: QueryRow[] = [];
-  const connection = requireWorkoutConnection();
-  for await (const outcome of connection.queryPages(
-    { contract: contract(type), ...extra },
-    {
-      firstPageSize: QUERY_PAGE_SIZE,
-      pageSize: QUERY_PAGE_SIZE,
-      signal: options.signal,
-      pageTimeoutMs: options.timeoutMs === undefined ? READ_TIMEOUT_MS : options.timeoutMs,
-      coordination: options.coordination,
-    },
-  )) {
-    const page: QueryPage<JsonObject> = validResult(outcome);
-    if (rows.length + page.results.length > MAX_SOURCE_ROWS) {
-      throw new Error(
-        `Workout ${type} query exceeded the ${MAX_SOURCE_ROWS.toLocaleString()}-record client budget.`,
-      );
+  const client = requireWorkoutConnection().records;
+  let cursor: string | undefined;
+  for (;;) {
+    const page: ContractQueryResult = await client.queryContract(
+      contract(type),
+      {
+        pageSize: QUERY_PAGE_SIZE,
+        cursor,
+        signal: signalFor(options, options.timeoutMs ?? READ_TIMEOUT_MS),
+      },
+    );
+    const paths = new Map(page.page.records.map((record) => [record.id, record.path]));
+    for (const entry of page.records) {
+      const projection = entry.implementations.find((candidate) => candidate.typeName === provider)
+        ?? entry.implementations.find((candidate) => candidate.typeName === type)
+        ?? entry.implementations[0];
+      if (!projection) continue;
+      rows.push({
+        path: paths.get(entry.id) ?? "",
+        frontmatter: plain(projection.fields),
+      });
+      if (rows.length > MAX_SOURCE_ROWS) {
+        throw new Error(
+          `Workout ${type} query exceeded the ${MAX_SOURCE_ROWS.toLocaleString()}-record client budget.`,
+        );
+      }
     }
-    rows.push(...page.results);
+    cursor = page.page.cursor;
+    if (!cursor) break;
   }
   return rows;
 }
@@ -351,8 +386,14 @@ const allQuickLogRows = async (options: ConnectRequestOptions = {}) =>
   );
 const allTemplateRows = (options: ConnectRequestOptions = {}) => rows("plan-template", {}, options);
 
-function withTimeout(options: ConnectRequestOptions, timeoutMs: number): ConnectRequestOptions {
-  return { ...options, timeoutMs: options.timeoutMs ?? timeoutMs };
+function signalFor(
+  options: ConnectRequestOptions,
+  timeoutMs: number,
+): AbortSignal | undefined {
+  const timeout = options.timeoutMs ?? timeoutMs;
+  const timeoutSignal = timeout === undefined ? undefined : AbortSignal.timeout(timeout);
+  if (options.signal && timeoutSignal) return AbortSignal.any([options.signal, timeoutSignal]);
+  return options.signal ?? timeoutSignal;
 }
 
 function awaitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -564,13 +605,12 @@ export const connectApi = {
   },
   settings: {
     get: async (options: ConnectRequestOptions = {}) => {
-      const description = requireConnectOutcome(
-        await requireWorkoutConnection().describe(withTimeout(options, READ_TIMEOUT_MS)),
-      );
+      const connection = requireWorkoutConnection();
+      await connection.records.describe(signalFor(options, READ_TIMEOUT_MS));
       return {
-        dataDir: requireWorkoutConnection().collectionId,
+        dataDir: connection.collectionId,
         configDataDir: "mdbase connect",
-        collectionName: description.displayName,
+        collectionName: connection.displayName,
       };
     },
     update: async () => { throw new Error("Collection folders are managed in mdbase connect."); },

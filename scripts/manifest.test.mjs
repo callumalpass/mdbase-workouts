@@ -8,6 +8,7 @@ import { parse } from "yaml";
 
 const root = resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(await readFile(resolve(root, "public/.well-known/mdbase-app.json"), "utf8"));
+const generated = JSON.parse(await readFile(resolve(root, "src/generated/mdbase-app.json"), "utf8"));
 
 test("Workouts requests only v2 collection read and record CRUD groups", () => {
   assert.equal(manifest.manifest_version, 1);
@@ -20,6 +21,10 @@ test("Workouts requests only v2 collection read and record CRUD groups", () => {
     required: ["list", "read", "add", "replace", "move", "delete"],
     scope: { kind: "collection" },
   });
+});
+
+test("the bundles manifest source matches the deployed manifest", () => {
+  assert.deepEqual(generated, manifest);
 });
 
 test("bundled setup preserves exact resource bytes, modes, and contract digests", async () => {

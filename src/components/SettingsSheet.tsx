@@ -9,12 +9,10 @@ import {
   subscribeToWorkoutSession,
   workoutMutationBusySnapshot,
   workoutPendingMutationSnapshot,
-  workoutSession,
   workoutSnapshot,
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
 import { clearWorkoutCache } from "../lib/workout-cache";
-import { requireConnectOutcome } from "../lib/connect-outcome";
 
 interface Props {
   open: boolean;
@@ -34,21 +32,22 @@ export default function SettingsSheet({ open, onClose }: Props) {
     subscribeToWorkoutPendingMutation,
     workoutPendingMutationSnapshot,
   );
-  const connected = snapshot.status === "ready" ? snapshot.info : null;
-  const connection = snapshot.status === "ready" ? workoutSession.connection() : null;
+  const phase = snapshot.phase;
+  const connection = phase.kind === "ready" ? phase.connection : null;
+  const connected = connection
+    ? { collectionId: connection.id, displayName: connection.displayName }
+    : null;
   const [dataDir, setDataDir] = useState("");
   const [resolvedDir, setResolvedDir] = useState("");
   const [originalDir, setOriginalDir] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [collectionName, setCollectionName] = useState("");
-  const [directBusy, setDirectBusy] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
   const connectedCollectionId = connected?.collectionId;
 
   useEffect(() => {
     if (open) {
-      if (connectedCollectionId) void connection?.checkDirectAccess();
       api.settings.get().then((s) => {
         setDataDir(s.configDataDir);
         setOriginalDir(s.configDataDir);
@@ -82,24 +81,6 @@ export default function SettingsSheet({ open, onClose }: Props) {
     }
   };
 
-  const enableDirectAccess = async () => {
-    setDirectBusy(true);
-    setError("");
-    try {
-      const outcome = await connection?.requestDirectAccess();
-      const status = outcome ? requireConnectOutcome(outcome) : undefined;
-      if (status === "denied") {
-        setError("Local network access is blocked in this browser.");
-      } else if (status === "unavailable") {
-        setError("The local mdbase connector could not be reached.");
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Direct access could not be enabled.");
-    } finally {
-      setDirectBusy(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-ink/30" onClick={onClose} />
@@ -116,92 +97,63 @@ export default function SettingsSheet({ open, onClose }: Props) {
             <p className="mt-2 text-sm font-semibold">{collectionName || "Connected through mdbase connect"}</p>
             <p className="mt-1 text-xs text-faded">Connected through mdbase connect</p>
             <p className="mt-2 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
-            {connected.directAccess !== "disabled" && (
-              <div className="mt-4 border-t border-rule pt-4">
-                <p className="text-[10px] font-mono text-faded tracking-wider uppercase">
-                  Connection route
-                </p>
-                <p className="mt-2 text-sm font-semibold">
-                  {connected.directAccess === "available"
-                    ? "Direct on this computer"
-                    : "mdbase relay"}
-                </p>
-                {connected.directAccess === "available" ? (
-                  <p className="mt-1 text-xs leading-5 text-faded">
-                    Faster local reads are ready, and this collection stays available after the relay login expires.
-                  </p>
-                ) : (
-                  <>
-                    <p className="mt-1 text-xs leading-5 text-faded">
-                      Use the local connector to avoid relay round trips and keep this collection connected on this computer.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={directBusy || connected.directAccess === "checking"}
-                      onClick={() => void enableDirectAccess()}
-                      className="mt-3 border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper disabled:opacity-50"
-                    >
-                      {directBusy || connected.directAccess === "checking" ? "Checking local connector..." : "Keep connected locally"}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
             <button
               type="button"
               disabled={sessionBusy || mutationBusy}
               onClick={() => {
                 setSessionBusy(true);
                 setError("");
-                try {
-                  const pending = connection?.pendingMutations() ?? [];
-                  if (pending.length && !window.confirm(
-                    "This collection has unsettled writes. Disconnecting discards their recovery records. Disconnect anyway?",
-                  )) {
-                    return;
+                void (async () => {
+                  try {
+                    const pending = connection?.records.ledger.getSnapshot().pending ?? [];
+                    if (pending.length && !window.confirm(
+                      "This collection has unsettled writes. Disconnecting discards their recovery records. Disconnect anyway?",
+                    )) {
+                      return;
+                    }
+                    await forgetWorkoutCollection(connected.collectionId, {
+                      confirmPending: pending.length > 0,
+                    });
+                    clearWorkoutCache(connected.collectionId);
+                    invalidateConnectApiCache();
+                    onClose();
+                  } catch (reason) {
+                    setError(reason instanceof Error ? reason.message : "The collection could not be disconnected.");
+                  } finally {
+                    setSessionBusy(false);
                   }
-                  forgetWorkoutCollection(connected.collectionId, {
-                    confirmPending: pending.length > 0,
-                  });
-                  clearWorkoutCache(connected.collectionId);
-                  invalidateConnectApiCache();
-                  onClose();
-                } catch (reason) {
-                  setError(reason instanceof Error ? reason.message : "The collection could not be disconnected.");
-                } finally {
-                  setSessionBusy(false);
-                }
+                })();
               }}
               className="mt-4 border border-rule px-3 py-2 text-xs text-faded active:bg-paper"
             >
               Disconnect collection
             </button>
-            {snapshot.connections.filter(
-              (connection) => connection.collectionId !== connected.collectionId,
-            ).map((connection) => (
+            {snapshot.collections.filter(
+              (candidate) => candidate.collectionId !== connected.collectionId,
+            ).map((candidate) => (
               <button
-                key={connection.collectionId}
+                key={candidate.collectionId}
                 type="button"
                 disabled={sessionBusy || mutationBusy || (
                   pendingMutation !== null
-                  && pendingMutation.collectionId !== connection.collectionId
-                )}
+                  && pendingMutation.collectionId !== candidate.collectionId
+                ) || candidate.availability?.state === "unavailable"}
                 onClick={() => {
                   setSessionBusy(true);
                   setError("");
-                  try {
-                    selectWorkoutCollection(connection.collectionId);
-                    invalidateConnectApiCache();
-                    onClose();
-                  } catch (reason) {
-                    setError(reason instanceof Error ? reason.message : "The collection could not be opened.");
-                  } finally {
-                    setSessionBusy(false);
-                  }
+                  void selectWorkoutCollection(candidate.collectionId)
+                    .then(() => {
+                      invalidateConnectApiCache();
+                      onClose();
+                    })
+                    .catch((reason: unknown) => {
+                      setError(reason instanceof Error ? reason.message : "The collection could not be opened.");
+                    })
+                    .finally(() => setSessionBusy(false));
                 }}
                 className="mt-2 block w-full border border-rule px-3 py-2 text-left text-xs text-faded active:bg-paper"
               >
-                Open {connection.displayName}
+                Open {candidate.displayName}
               </button>
             ))}
             <button
