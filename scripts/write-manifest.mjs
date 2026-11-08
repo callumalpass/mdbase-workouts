@@ -85,6 +85,13 @@ await writeFile(target, `${JSON.stringify({
         "records.delete",
       ],
     },
+    // Next authorization publishes record and file rights as joint groups, so
+    // every required record capability declares its paired file actions. The
+    // app does not use the file API; this keeps the declaration connectable.
+    files: {
+      required: ["list", "read", "add", "replace", "move", "delete"],
+      scope: { kind: "collection" },
+    },
   },
   provisions: {
     type_packs: [

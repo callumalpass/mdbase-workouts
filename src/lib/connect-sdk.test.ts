@@ -73,7 +73,10 @@ describe("Workouts Connect SDK contract (hermetic)", () => {
     const proof = JSON.parse(form.get("application_authorization")!);
     expect(proof.binding.requested_operations).toEqual(expected);
     expect(proof.binding.contracts.semantic_capabilities).toBe(2);
-    expect(proof.binding.requested_files).toBeUndefined();
+    expect(proof.binding.requested_files).toEqual({
+      actions: ["list", "read", "add", "replace", "move", "delete"],
+      scope: { kind: "collection" },
+    });
     expect(proof.signature).toEqual(expect.any(String));
     expect(expected).not.toContain("apply_type_pack");
     expect(navigate).toHaveBeenCalledWith(`${serverUrl}/approve`);
