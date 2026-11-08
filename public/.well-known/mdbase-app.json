@@ -43,6 +43,19 @@
         "records.edit",
         "records.delete"
       ]
+    },
+    "files": {
+      "required": [
+        "list",
+        "read",
+        "add",
+        "replace",
+        "move",
+        "delete"
+      ],
+      "scope": {
+        "kind": "collection"
+      }
     }
   },
   "provisions": {

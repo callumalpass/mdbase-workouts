@@ -3,9 +3,12 @@
 Workouts declares only `collection.read`, `records.create`, `records.edit` and
 `records.delete` under capability contract 2. Manifest format remains 1.
 Setup authority derives from exact type-pack provisions, not broad
-`definitions.manage` or a setup alias. No file, timer or offline-replica rights
-are requested. Contract digests, resource bytes, full-collection scope, origins
-and base path are preserved.
+`definitions.manage` or a setup alias. Next authorization publishes record and
+file rights as joint groups, so the manifest declares the file actions paired
+with its required record capabilities even though the app does not use the file
+API; without that declaration the next backend refuses fresh authorization.
+No timer or offline-replica rights are requested. Contract digests, resource
+bytes, full-collection scope, origins and base path are preserved.
 
 ## Required sequence
 

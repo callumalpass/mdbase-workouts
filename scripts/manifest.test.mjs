@@ -16,7 +16,10 @@ test("Workouts requests only v2 collection read and record CRUD groups", () => {
     required: ["collection.read", "records.create", "records.edit", "records.delete"],
   });
   assert.equal(manifest.requirements.access, "full_collection");
-  assert.equal(Object.hasOwn(manifest.requirements, "files"), false);
+  assert.deepEqual(manifest.requirements.files, {
+    required: ["list", "read", "add", "replace", "move", "delete"],
+    scope: { kind: "collection" },
+  });
 });
 
 test("bundled setup preserves exact resource bytes, modes, and contract digests", async () => {
