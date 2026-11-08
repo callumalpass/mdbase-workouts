@@ -11,8 +11,13 @@ const developmentHttps = process.env.MDBASE_WORKOUTS_HTTPS_KEY
     }
   : undefined;
 
+const stagingSdk = process.env.VITE_MDBASE_CONNECT_STAGING === "1";
+
 export default defineConfig({
   base: "./",
+  resolve: stagingSdk ? {
+    alias: [{ find: /^@mdbase-dev\/sdk$/, replacement: "@mdbase-dev/sdk-staging" }],
+  } : undefined,
   plugins: [
     react(),
     VitePWA({
@@ -47,6 +52,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\//,

@@ -14,19 +14,20 @@ import {
   refreshWorkoutPendingMutation,
   selectWorkoutCollection,
   setWorkoutStartupFailure,
+  startWorkoutSession,
   subscribeToWorkoutMutationBusy,
   subscribeToWorkoutPendingMutation,
   subscribeToWorkoutSession,
   subscribeToWorkoutStartupFailure,
   workoutMutationBusySnapshot,
   workoutPendingMutationSnapshot,
-  workoutSession,
   workoutSnapshot,
   workoutStartupFailureSnapshot,
+  type ConnectRequestOptions,
+  type WorkoutConnection,
 } from "../lib/connect";
 import { invalidateConnectApiCache } from "../lib/connect-api";
-import type { ConnectRequestOptions, MdbaseConnection } from "@mdbase-dev/connect";
-import { requireConnectOutcome } from "../lib/connect-outcome";
+import { describeError, type MdbaseErrorAction, type MdbasePhase } from "@mdbase-dev/sdk";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -50,90 +51,43 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     subscribeToWorkoutStartupFailure,
     workoutStartupFailureSnapshot,
   );
-  const [starting, setStarting] = useState(false);
-  const [opening, setOpening] = useState(false);
-  const [applyingDefinitions, setApplyingDefinitions] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const foregroundRequest = useRef<AbortController | null>(null);
-
-  const lifecycleStarting = snapshot.status === "starting";
-  const lifecycleTerminal = snapshot.status === "destroyed";
-  const lifecycleActionable = snapshot.status !== "not_started"
-    && snapshot.status !== "starting"
-    && snapshot.status !== "start_failed"
-    && snapshot.status !== "destroyed";
+  const phase = snapshot.phase;
 
   useEffect(() => () => {
     foregroundRequest.current?.abort("Workout connection screen closed");
   }, []);
 
   useEffect(() => {
-    if ("collectionId" in snapshot) refreshWorkoutPendingMutation();
-  }, [snapshot]);
+    refreshWorkoutPendingMutation();
+  }, [phase, pending?.requestId]);
 
-  // The SDK re-checks setup whenever connection info changes (including the
-  // route switching between hosted and direct access). Keep a collection that
-  // already verified mounted through that re-check: unmounting aborts the
-  // direct-access probe, which changes the route again and restarts the check.
-  const verifiedCollection = useRef<string | null>(null);
-  if (snapshot.status === "ready") verifiedCollection.current = snapshot.collectionId;
-  else if (snapshot.status !== "checking_setup" || snapshot.collectionId !== verifiedCollection.current) {
-    verifiedCollection.current = null;
-  }
+  useEffect(() => {
+    if (phase.kind !== "ready" && startupFailure) {
+      setError(connectErrorMessage(startupFailure));
+    }
+  }, [phase.kind, startupFailure]);
 
-  const connection = snapshot.status === "ready" || verifiedCollection.current
-    ? workoutSession.connection()
-    : null;
-  if (snapshot.status === "ready" && !connection) {
-    throw new Error("The ready workout session has no connection.");
-  }
-  if (connection && connection.collectionId === ("collectionId" in snapshot ? snapshot.collectionId : null)) {
+  if (phase.kind === "ready") {
     return (
-      <ConnectedCollection
-        key={connection.collectionId}
-        connection={connection}
-      >
+      <ConnectedCollection key={phase.collectionId} connection={phase.connection}>
         {children}
       </ConnectedCollection>
     );
   }
 
-  async function beginConnection() {
-    if (!lifecycleActionable || opening) return;
-    setOpening(true);
+  async function act(action: () => Promise<void>): Promise<void> {
+    if (busy || mutationBusy || pending) return;
+    setBusy(true);
     setError("");
     try {
-      await authorizeWorkoutCollection("choose", requestOptions(15_000));
+      await action();
     } catch (reason) {
       setError(connectErrorMessage(reason));
     } finally {
-      setOpening(false);
-    }
-  }
-
-  async function reviewAuthorization() {
-    if (snapshot.status !== "authorization_required" || opening) return;
-    setOpening(true);
-    setError("");
-    try {
-      await authorizeWorkoutCollection("selected", requestOptions(15_000));
-    } catch (reason) {
-      setError(connectErrorMessage(reason));
-    } finally {
-      setOpening(false);
-    }
-  }
-
-  async function applyCollectionSetup() {
-    if (snapshot.status !== "setup_review_required" || !snapshot.update.canApply || applyingDefinitions) return;
-    setApplyingDefinitions(true);
-    setError("");
-    try {
-      await applyWorkoutCollectionSetup(requestOptions(30_000));
-    } catch (reason) {
-      setError(connectErrorMessage(reason));
-    } finally {
-      setApplyingDefinitions(false);
+      setBusy(false);
     }
   }
 
@@ -144,70 +98,55 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     return { signal: controller.signal, timeoutMs };
   }
 
-  function openConnection(collectionId: string) {
-    if (!lifecycleActionable || opening || applyingDefinitions) return;
-    setError("");
-    try {
-      selectWorkoutCollection(collectionId);
-      invalidateConnectApiCache();
-    } catch (reason) {
-      setError(connectErrorMessage(reason));
-    }
-  }
-
-  async function retryStart() {
-    if (snapshot.status !== "start_failed" && snapshot.status !== "not_started") return;
-    setStarting(true);
-    setError("");
-    try {
-      const outcome = await workoutSession.start({ timeoutMs: 15_000 });
-      requireConnectOutcome(outcome);
-      setWorkoutStartupFailure(null);
-    } catch (reason) {
-      setWorkoutStartupFailure(reason);
-      setError(connectErrorMessage(reason));
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  const unavailableMessage = snapshot.status === "start_failed"
-    ? connectErrorMessage({ problem: snapshot.problem })
-    : snapshot.status === "not_started" && startupFailure
-      ? connectErrorMessage(startupFailure)
-    : snapshot.status === "destroyed"
-      ? "This workout connection session has ended. Reload Workouts to reconnect."
-      : snapshot.status === "unavailable"
-    ? snapshot.reason === "invalid_stored_grant"
-      ? "This saved authorization is no longer compatible. Choose the collection again."
-      : snapshot.reason === "authorization_lost"
-        ? "Access to this collection was removed. Choose it again or open another collection."
-        : "This bookmarked collection is not authorized on this device."
-    : snapshot.status === "authorization_required"
-      ? "This collection needs updated access for Workouts. Review and approve the changes to continue; saved access is not expanded automatically."
-      : snapshot.status === "blocked"
-        ? snapshot.problem.message
-        : "";
-  const displayedError = error || unavailableMessage;
-  const reviewingDefinitions = snapshot.status === "setup_review_required";
-  const checkingDefinitions = snapshot.status === "checking_setup";
-  const definitionsApplicable = !reviewingDefinitions
-    || snapshot.update.canApply;
-  const lifecycleBusy = starting || lifecycleStarting || opening
-    || applyingDefinitions || checkingDefinitions;
-  const switchingBlocked = mutationBusy || pending !== null;
-  const primaryBusy = lifecycleBusy || (
-    snapshot.status !== "not_started"
-    && snapshot.status !== "start_failed"
-    && snapshot.status !== "authorization_required"
-    && switchingBlocked
-  );
-  const selectedCollectionId = "collectionId" in snapshot
-    ? snapshot.collectionId
-    : null;
-  const alternativeConnections = snapshot.connections.filter(
-    (connection) => connection.collectionId !== selectedCollectionId,
-  );
+  const chooser = snapshot.collections
+    .filter((collection) => collection.collectionId !== phaseCollectionId(phase))
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  const problem = phase.kind === "problem"
+    ? phase.problem
+    : phase.kind === "signed_out"
+      ? phase.notice
+      : null;
+  const terminal = phase.kind === "closed";
+  const displayedError = error || problem?.message || "";
+  const unavailable = phase.kind === "unavailable";
+  const starting = phase.kind === "starting" || phase.kind === "authorizing" || phase.kind === "opening";
+  const action = connectionAction(phase, () => ({
+    kind: phase.kind,
+    perform: () => act(async () => {
+      switch (phase.kind) {
+        case "signed_out":
+        case "choosing":
+          await authorizeWorkoutCollection("choose", requestOptions(15_000));
+          break;
+        case "needs_approval":
+          await authorizeWorkoutCollection("selected", requestOptions(15_000));
+          break;
+        case "needs_setup":
+          await applyWorkoutCollectionSetup(requestOptions(30_000));
+          break;
+        case "problem":
+          if (phase.problem.action === "set_up") {
+            await applyWorkoutCollectionSetup(requestOptions(30_000));
+          } else if (phase.problem.action === "sign_in") {
+            await authorizeWorkoutCollection("choose", requestOptions(15_000));
+          } else if (phase.problem.action === "approve") {
+            await authorizeWorkoutCollection("selected", requestOptions(15_000));
+          } else {
+            await startWorkoutSession(requestOptions(15_000));
+          }
+          break;
+        default:
+          await startWorkoutSession(requestOptions(15_000));
+      }
+    }),
+  }));
+  const actionLabel = busy
+    ? "Connecting…"
+    : starting
+      ? phase.kind === "opening"
+        ? "Opening workout collection…"
+        : "Checking connection…"
+      : action.label;
 
   return (
     <main className="min-h-[100dvh] overflow-y-auto px-5 py-10 sm:py-16">
@@ -252,83 +191,59 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             </div>
           )}
 
-          {reviewingDefinitions && (
+          {phase.kind === "needs_setup" && (
             <div className="mb-4 border border-ocean bg-paper px-3 py-3 text-sm">
               <strong className="block">Review workout definitions</strong>
               <p className="mt-1 text-faded">
                 Workouts needs to install or update its portable record definitions before opening this collection.
               </p>
-              <ul className="mt-2 space-y-1 font-mono text-xs text-faded">
-                {snapshot.update.typePacks.map((update) => (
-                  <li key={update.id}>{update.name}: {update.status}</li>
-                ))}
-              </ul>
             </div>
           )}
 
-          {lifecycleActionable && alternativeConnections.length ? (
+          {chooser.length ? (
             <div className="mb-4 border-y border-rule">
-              {alternativeConnections.map((connection) => (
-                <button
-                  key={connection.collectionId}
-                  type="button"
-                  disabled={lifecycleBusy || mutationBusy || (
-                    pending !== null
-                    && pending.collectionId !== connection.collectionId
-                  )}
-                  className="flex w-full items-center justify-between gap-4 border-b border-rule px-3 py-3 text-left last:border-b-0 active:bg-paper disabled:opacity-50"
-                  onClick={() => openConnection(connection.collectionId)}
-                >
-                  <span>
-                    <strong className="block text-sm">{connection.displayName}</strong>
-                    <small className="mt-1 block font-mono text-[9px] text-faded">
-                      {connection.collectionId}
-                    </small>
-                  </span>
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-ocean">
-                    Open
-                  </span>
-                </button>
-              ))}
+              {chooser.map((collection) => {
+                const reason = collection.availability?.state === "unavailable"
+                  ? describeError(collection.availability)?.message
+                  : null;
+                return (
+                  <button
+                    key={collection.collectionId}
+                    type="button"
+                    disabled={busy || mutationBusy || pending !== null || Boolean(reason)}
+                    className="flex w-full items-center justify-between gap-4 border-b border-rule px-3 py-3 text-left last:border-b-0 active:bg-paper disabled:opacity-50"
+                    onClick={() => void act(async () => {
+                      await selectWorkoutCollection(collection.collectionId, requestOptions(15_000));
+                      invalidateConnectApiCache();
+                    })}
+                  >
+                    <span>
+                      <strong className="block text-sm">{collection.displayName}</strong>
+                      <small className="mt-1 block font-mono text-[9px] text-faded">
+                        {reason ?? collection.collectionId}
+                      </small>
+                    </span>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-ocean">
+                      {reason ? "Unavailable" : "Open"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
 
-          {!lifecycleTerminal && <button
-            type="button"
-            disabled={primaryBusy || !definitionsApplicable}
-            onClick={() => void (
-              snapshot.status === "start_failed" || snapshot.status === "not_started"
-                ? retryStart()
-                : reviewingDefinitions
-                  ? applyCollectionSetup()
-                  : snapshot.status === "authorization_required"
-                    ? reviewAuthorization()
-                    : beginConnection()
-            )}
-            className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
-          >
-            {snapshot.status === "start_failed" || snapshot.status === "not_started"
-              ? starting ? "Retrying connection…" : "Retry connection"
-              : applyingDefinitions
-              ? "Applying workout definitions…"
-              : checkingDefinitions
-                ? "Checking workout definitions…"
-                : starting
-              ? "Checking connection…"
-              : opening
-                ? "Opening mdbase connect…"
-                : reviewingDefinitions
-                  ? definitionsApplicable
-                    ? "Apply workout definitions"
-                    : "Resolve definition conflicts"
-                : snapshot.status === "authorization_required"
-                  ? "Review updated access"
-                 : alternativeConnections.length
-                   ? "Connect another collection"
-                   : "Choose workout collection"}
-          </button>}
+          {!terminal && !unavailable && action.visible && (
+            <button
+              type="button"
+              disabled={busy || starting || mutationBusy || pending !== null}
+              onClick={() => void action.perform()}
+              className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
+            >
+              {actionLabel}
+            </button>
+          )}
           <p className="mt-3 text-center text-xs leading-5 text-faded">
-            Local collections stay on your computer. Hosted collections remain available when it is offline.
+            Local collections stay on your computer. Cloud copies and Private collections stay available when it is offline.
           </p>
         </div>
       </section>
@@ -336,20 +251,78 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   );
 }
 
+function phaseCollectionId(phase: MdbasePhase): string | null {
+  return "collectionId" in phase ? phase.collectionId ?? null : null;
+}
+
+function connectionAction(
+  phase: MdbasePhase,
+  describe: () => { kind: string; perform: () => Promise<void> },
+): { label: string; visible: boolean; perform: () => Promise<void> } {
+  const { perform } = describe();
+  switch (phase.kind) {
+    case "signed_out":
+      return { label: "Sign in to mdbase", visible: true, perform };
+    case "choosing":
+      return { label: "Choose workout collection", visible: true, perform };
+    case "needs_approval":
+      return {
+        label: phase.declined ? "Choose workout collection" : "Review updated access",
+        visible: true,
+        perform,
+      };
+    case "needs_setup":
+      return { label: "Apply workout definitions", visible: true, perform };
+    case "problem":
+      return {
+        label: phase.problem.actionLabel
+          ?? labelForAction(phase.problem.action)
+          ?? "Try again",
+        visible: phase.problem.action !== "none" && phase.problem.action !== "contact_support",
+        perform,
+      };
+    case "closed":
+    case "unavailable":
+      return { label: "", visible: false, perform };
+    default:
+      return { label: "", visible: false, perform };
+  }
+}
+
+function labelForAction(action: MdbaseErrorAction): string | null {
+  switch (action) {
+    case "retry":
+    case "wait":
+    case "check_connection":
+      return "Try again";
+    case "sign_in":
+      return "Sign in to mdbase";
+    case "approve":
+      return "Review access";
+    case "choose_collection":
+      return "Choose workout collection";
+    case "set_up":
+      return "Apply workout definitions";
+    case "resolve_outcome":
+      return "Recover write";
+    default:
+      return null;
+  }
+}
+
 function ConnectedCollection({
   connection,
   children,
 }: {
-  connection: MdbaseConnection;
+  connection: Extract<MdbasePhase, { kind: "ready" }>["connection"];
   children: ReactNode;
 }) {
   useEffect(() => {
     invalidateConnectApiCache();
     refreshWorkoutPendingMutation();
-    const controller = new AbortController();
-    void connection.checkDirectAccess({ signal: controller.signal, timeoutMs: 5_000 }).catch(() => {});
+    const stop = connection.records.ledger.subscribe(() => refreshWorkoutPendingMutation());
     return () => {
-      controller.abort("Workout collection changed");
+      stop();
       invalidateConnectApiCache();
     };
   }, [connection]);
@@ -389,11 +362,10 @@ function PendingMutationRecovery({
   }
 
   if (!pending) return null;
-  const setupMutation = pending.operation === "apply_collection_setup";
   return <aside role="status" className="mx-auto mb-3 mt-3 max-w-2xl border border-blush bg-paper px-4 py-3 text-sm">
       <p>
-        This {setupMutation ? "workout setup change" : "workout write"} may have completed.
-        Recover request <code>{pending.requestId}</code> before making it again.
+        This workout write may have completed.
+        Recover write <code>{pending.requestId}</code> before making it again.
       </p>
       {recoveryError && <p role="alert" className="mt-2 text-blush">{recoveryError}</p>}
       <button
@@ -401,6 +373,6 @@ function PendingMutationRecovery({
         disabled={recovering}
         onClick={() => void recover()}
         className="mt-3 bg-blush px-3 py-2 font-semibold text-paper disabled:opacity-50"
-      >{recovering ? "Recovering…" : setupMutation ? "Recover setup change" : "Recover write"}</button>
+      >{recovering ? "Recovering…" : "Recover write"}</button>
     </aside>;
 }

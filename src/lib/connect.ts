@@ -1,59 +1,74 @@
 import {
-  MdbaseBrowserSelection,
-  MdbaseConnect,
-  type ConnectRequestOptions,
-  type ConnectProblem,
-  type MdbaseConnection,
-  type MdbaseApplicationSessionSnapshot,
-} from "@mdbase-dev/connect";
-import { connectProblemFromError, requireConnectOutcome } from "./connect-outcome";
+  createMdbase,
+  describeError,
+  isMdbaseError,
+  type Mdbase,
+  type MdbaseApplicationDeclaration,
+  type MdbaseClient,
+  type MdbasePhase,
+  type MdbaseSnapshot,
+} from "@mdbase-dev/sdk";
+import manifest from "../generated/mdbase-app.json";
 
 const environment = (import.meta as ImportMeta & {
   env: Record<string, string | boolean | undefined>;
 }).env;
 const isolatedStaging = environment.VITE_MDBASE_CONNECT_STAGING === "1";
-const serverUrl = connectEnvironmentUrl(
-  "VITE_MDBASE_CONNECT_URL",
-  "https://connect.mdbase.dev",
-);
-const loopbackUrl = connectEnvironmentUrl(
-  "VITE_MDBASE_CONNECT_LOOPBACK_URL",
-  "http://127.0.0.1:28485",
-);
-if (isolatedStaging && new URL(serverUrl).origin === "https://connect.mdbase.dev") {
-  throw new Error("An isolated Workouts build cannot use the production Connect endpoint.");
+const connectUrl = environment.VITE_MDBASE_CONNECT_URL;
+const expectedConnectOrigin = isolatedStaging
+  ? "https://connect-staging.mdbase.dev"
+  : "https://connect.mdbase.dev";
+if (typeof connectUrl === "string" && connectUrl.trim()
+    && new URL(connectUrl).origin !== expectedConnectOrigin) {
+  throw new Error(`Workouts requires the ${isolatedStaging ? "isolated staging" : "production"} mdbase Connect endpoint.`);
 }
+
 const appRoot = new URL(String(environment.BASE_URL || "./"), location.href);
-const manifest = new URL(".well-known/mdbase-app.json", appRoot).href;
+export const workoutDeclaration: MdbaseApplicationDeclaration = {
+  id: manifest.id,
+  name: manifest.name,
+  origin: appRoot.origin,
+  // The published SDK carries production trust. Non-HTTPS origins are local
+  // development; they still need a locally built SDK to open a collection.
+  environment: isolatedStaging
+    ? "staging"
+    : appRoot.protocol === "https:"
+      ? "production"
+      : "lab",
+  manifest,
+  storage: { applicationNamespace: "mdbase-workouts" },
+};
 
-function connectEnvironmentUrl(name: string, fallback: string): string {
-  const value = environment[name];
-  if (typeof value === "string" && value.trim()) return value;
-  if (isolatedStaging) {
-    throw new Error(`${name} is required for an isolated Workouts build.`);
-  }
-  return fallback;
+let workoutEntry: Mdbase | null = null;
+
+function entry(): Mdbase {
+  workoutEntry ??= createMdbase(workoutDeclaration, {
+    privateCollections: true,
+    followVisibility: true,
+  });
+  return workoutEntry;
 }
 
-export const workoutConnect = new MdbaseConnect({
-  serverUrl,
-  loopbackUrl,
-  manifest,
-  redirectUri: appRoot.href,
-});
+/** Test-only seam: replace the entry with an SDK fixture. */
+export function setWorkoutEntryForTests(next: Mdbase | null): void {
+  workoutEntry = next;
+}
 
-// The SDK derives v2 authorization (including exact provision-bound setup) from
-// the declaration. Do not pass legacy operations or retry with a v1 declaration.
-export const workoutSession = workoutConnect.application({
-  selection: new MdbaseBrowserSelection({
-    fallbackPath: appRoot.pathname,
-  }),
-});
+export interface WorkoutConnection {
+  readonly collectionId: string;
+  readonly displayName: string;
+  readonly records: MdbaseClient;
+}
 
 export interface PendingWorkoutMutation {
   collectionId: string;
   requestId: string;
   operation: string;
+}
+
+export interface ConnectRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 let pendingWorkoutMutation: PendingWorkoutMutation | null = null;
@@ -80,16 +95,11 @@ export function rememberWorkoutPendingMutation(
   error: unknown,
   connection = workoutConnection(),
 ): boolean {
-  const problem = connectProblemFromError(error);
-  const requestId = (problem?.details as { request_id?: unknown } | undefined)?.request_id;
-  if (problem?.operation_outcome !== "unknown" || typeof requestId !== "string") return false;
-  const pending = connection?.pendingMutation(requestId)
-    ?? connection?.pendingMutations().find((candidate) => candidate.requestId === requestId);
-  publishPendingMutation({
-    collectionId: connection?.collectionId ?? "unknown",
-    requestId,
-    operation: pending?.operation ?? "write",
-  });
+  const code = problemCode(error);
+  if (code !== "outcome_unknown" && code !== "unavailable") return false;
+  const pending = findPendingWorkoutMutation(connection);
+  if (!pending) return false;
+  publishPendingMutation(pending);
   return true;
 }
 
@@ -98,18 +108,13 @@ export async function recoverWorkoutPendingMutation(
 ): Promise<void> {
   const summary = pendingWorkoutMutation;
   if (!summary) return;
-  const connection = workoutConnect.connection(summary.collectionId);
-  if (!connection) {
+  const connection = workoutConnection();
+  if (!connection || connection.collectionId !== summary.collectionId) {
     throw new Error("Reauthorize the collection before recovering this exact workout write.");
-  }
-  const pending = connection.pendingMutation(summary.requestId);
-  if (!pending) {
-    refreshWorkoutPendingMutation(connection);
-    throw new Error("That pending workout write is no longer available.");
   }
   beginWorkoutMutation();
   try {
-    requireConnectOutcome(await pending.recover({ timeoutMs: 20_000, ...options }));
+    await connection.records.receipt(summary.requestId, requestSignal(options).signal);
     refreshWorkoutPendingMutation(connection);
   } catch (error) {
     rememberWorkoutPendingMutation(error, connection);
@@ -120,16 +125,12 @@ export async function recoverWorkoutPendingMutation(
 }
 
 export async function runWorkoutMutation<Value>(
-  operation: (connection: MdbaseConnection) => Promise<Value>,
+  operation: (connection: WorkoutConnection) => Promise<Value>,
 ): Promise<Value> {
   const connection = requireWorkoutConnection();
-  const pending = connection.pendingMutations()[0];
+  const pending = findPendingWorkoutMutation(connection);
   if (pending) {
-    publishPendingMutation({
-      collectionId: connection.collectionId,
-      requestId: pending.requestId,
-      operation: pending.operation,
-    });
+    publishPendingMutation(pending);
     throw new Error("Recover the unsettled workout write before submitting another change.");
   }
   beginWorkoutMutation();
@@ -156,15 +157,18 @@ export function workoutCollectionSwitchBlocker(targetCollectionId?: string): str
   const pending = findPendingWorkoutMutation(workoutConnection());
   publishPendingMutation(pending);
   if (pending && targetCollectionId !== pending.collectionId) {
-    return `Open ${pending.collectionId} and recover request ${pending.requestId} before switching collections.`;
+    return `Open ${pending.collectionId} and recover write ${pending.requestId} before switching collections.`;
   }
   return null;
 }
 
-export function selectWorkoutCollection(collectionId: string): void {
+export async function selectWorkoutCollection(
+  collectionId: string,
+  options: ConnectRequestOptions = {},
+): Promise<void> {
   const blocker = workoutCollectionSwitchBlocker(collectionId);
   if (blocker) throw new Error(blocker);
-  requireConnectOutcome(workoutSession.select(collectionId, { history: "replace" }));
+  await entry().select(collectionId, requestSignal(options));
 }
 
 export async function authorizeWorkoutCollection(
@@ -174,37 +178,36 @@ export async function authorizeWorkoutCollection(
   if (target === "choose") {
     const blocker = workoutCollectionSwitchBlocker();
     if (blocker) throw new Error(blocker);
+    await entry().addCollection(requestSignal(options));
+    return;
   }
-  requireConnectOutcome(await workoutSession.authorize(target, options));
+  await entry().reauthorize(requestSignal(options));
 }
 
 export async function applyWorkoutCollectionSetup(
   options: ConnectRequestOptions = {},
 ): Promise<void> {
-  await runWorkoutMutation(async (connection) => {
-    try {
-      requireConnectOutcome(await workoutSession.applyCollectionSetup(options));
-    } catch (error) {
-      rememberWorkoutPendingMutation(error, connection);
-      throw error;
-    }
+  await runWorkoutMutation(async () => {
+    const request = requestSignal(options);
+    const plan = await entry().setup.plan(request);
+    await entry().setup.apply(plan, request);
   });
 }
 
-export function forgetWorkoutCollection(
+export async function forgetWorkoutCollection(
   collectionId: string,
   options: { confirmPending?: boolean } = {},
-): void {
+): Promise<void> {
   if (activeWorkoutMutations > 0) {
     throw new Error("Wait for the current workout change to finish before disconnecting.");
   }
-  const pending = workoutConnect.connection(collectionId)?.pendingMutations() ?? [];
-  const hasPending = pending.length > 0
+  const pending = findPendingWorkoutMutation(workoutConnection());
+  const hasPending = pending?.collectionId === collectionId
     || pendingWorkoutMutation?.collectionId === collectionId;
   if (hasPending && !options.confirmPending) {
     throw new Error("This collection has unsettled writes. Recover them or explicitly confirm disconnecting and discarding recovery.");
   }
-  requireConnectOutcome(workoutSession.forget(collectionId));
+  await entry().forget(collectionId);
   if (pendingWorkoutMutation?.collectionId === collectionId) publishPendingMutation(null);
 }
 
@@ -225,15 +228,15 @@ export function setWorkoutStartupFailure(failure: unknown): void {
 
 export async function startWorkoutSession(options: ConnectRequestOptions = {}): Promise<void> {
   try {
-    const outcome = await workoutSession.start(options);
-    setWorkoutStartupFailure(outcome.ok ? null : connectProblemFailure(outcome.problem));
+    await entry().start(requestSignal(options));
+    setWorkoutStartupFailure(null);
   } catch (error) {
     setWorkoutStartupFailure(error);
   }
 }
 
-export function connectProblemFailure(problem: ConnectProblem): unknown {
-  return { problem };
+export function connectProblemFailure(problem: unknown): unknown {
+  return problem;
 }
 
 function beginWorkoutMutation(): void {
@@ -247,28 +250,17 @@ function endWorkoutMutation(): void {
 }
 
 function findPendingWorkoutMutation(
-  preferred: MdbaseConnection | null,
+  connection: WorkoutConnection | null,
 ): PendingWorkoutMutation | null {
-  const seen = new Set<string>();
-  const connections = [
-    preferred,
-    ...workoutConnect.connections().map(({ collectionId }) =>
-      workoutConnect.connection(collectionId)
-    ),
-  ];
-  for (const connection of connections) {
-    if (!connection || seen.has(connection.collectionId)) continue;
-    seen.add(connection.collectionId);
-    const pending = connection.pendingMutations()[0];
-    if (pending) {
-      return {
-        collectionId: connection.collectionId,
-        requestId: pending.requestId,
-        operation: pending.operation,
-      };
-    }
-  }
-  return null;
+  if (!connection) return null;
+  const snapshot = connection.records.ledger.getSnapshot();
+  const pending = snapshot.pending[0];
+  if (!pending) return null;
+  return {
+    collectionId: connection.collectionId,
+    requestId: pending.mutationId,
+    operation: "write",
+  };
 }
 
 function publishPendingMutation(next: PendingWorkoutMutation | null): void {
@@ -279,19 +271,29 @@ function publishPendingMutation(next: PendingWorkoutMutation | null): void {
   for (const listener of pendingMutationListeners) listener();
 }
 
-export function workoutSnapshot(): MdbaseApplicationSessionSnapshot {
-  return workoutSession.getSnapshot();
+export function workoutSnapshot(): MdbaseSnapshot {
+  return entry().getSnapshot();
+}
+
+export function workoutPhase(): MdbasePhase {
+  return entry().getSnapshot().phase;
 }
 
 export function subscribeToWorkoutSession(listener: () => void): () => void {
-  return workoutSession.subscribe(listener);
+  return entry().subscribe(listener);
 }
 
-export function workoutConnection(): MdbaseConnection | null {
-  return workoutSession.connection();
+export function workoutConnection(): WorkoutConnection | null {
+  const phase = workoutPhase();
+  if (phase.kind !== "ready") return null;
+  return connectionFrom(phase);
 }
 
-export function requireWorkoutConnection(): MdbaseConnection {
+export function workoutCollections(): MdbaseSnapshot["collections"] {
+  return entry().getSnapshot().collections;
+}
+
+export function requireWorkoutConnection(): WorkoutConnection {
   const connection = workoutConnection();
   if (!connection) {
     throw new Error("Choose a workout collection before loading records.");
@@ -299,24 +301,45 @@ export function requireWorkoutConnection(): MdbaseConnection {
   return connection;
 }
 
+function connectionFrom(
+  phase: Extract<MdbasePhase, { kind: "ready" }>,
+): WorkoutConnection {
+  return {
+    collectionId: phase.connection.id,
+    displayName: phase.connection.displayName,
+    records: phase.connection.records,
+  };
+}
+
 export function connectIsRequired(): boolean {
   return environment.PROD === true || environment.VITE_MDBASE_CONNECT === "1";
 }
 
 export function connectErrorMessage(error: unknown): string {
-  const problem = connectProblemFromError(error);
-  if (problem) {
-    const code = problem.code;
-    if (code === "connector_offline") return "The computer holding this collection is offline.";
-    if (problem.recovery === "upgrade_connector") {
-      return "Update mdbase connect on the collection computer before continuing.";
-    }
-    if (code === "not_authorized" || code === "authorization_expired") {
-      return "This connection has expired. Choose the collection again.";
-    }
-    if (code === "insufficient_access") return "This connection does not include the access Workouts needs.";
-    if (code === "unknown_collection") return "That collection is no longer authorized on this device.";
+  const described = describeError(error);
+  if (described) return described.message;
+  if (error && typeof error === "object" && "problem" in error) {
+    const problem = (error as { problem?: { message?: unknown } }).problem;
+    if (problem && typeof problem.message === "string") return problem.message;
   }
   if (error instanceof Error) return error.message;
   return "The workout collection could not be reached.";
+}
+
+function problemCode(error: unknown): string | null {
+  if (isMdbaseError(error)) return error.code;
+  if (error && typeof error === "object" && "code" in error
+      && typeof (error as { code?: unknown }).code === "string") {
+    return (error as { code: string }).code;
+  }
+  return null;
+}
+
+function requestSignal(options: ConnectRequestOptions): { signal?: AbortSignal } {
+  const timeout = options.timeoutMs;
+  const timeoutSignal = timeout === undefined ? undefined : AbortSignal.timeout(timeout);
+  const signal = options.signal && timeoutSignal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : options.signal ?? timeoutSignal;
+  return signal ? { signal } : {};
 }

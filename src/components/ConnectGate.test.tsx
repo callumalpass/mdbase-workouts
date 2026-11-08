@@ -2,32 +2,25 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const gateway = vi.hoisted(() => {
-  const unavailableSnapshot = {
-    status: "unavailable" as const,
-    collectionId: "stale-workouts",
-    reason: "not_authorized" as const,
-    connections: [
-      {
-        collectionId: "remembered-workouts",
-        displayName: "Remembered workouts",
-        operations: [],
-        scope: { contracts: [], access: "full_collection" as const },
-        route: "relay" as const,
-        directAccess: "permission_required" as const,
-      },
-    ],
+  const collection = {
+    collectionId: "remembered-workouts",
+    displayName: "Remembered workouts",
+    role: "owner" as const,
   };
   return {
     applySetup: vi.fn(),
+    authorize: vi.fn(),
     connection: null as Record<string, unknown> | null,
-    authorize: vi.fn(() => new Promise<never>(() => undefined)),
     pending: null as Record<string, unknown> | null,
     recover: vi.fn(),
-    select: vi.fn(() => ({ ok: true, value: {} })),
-    start: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+    select: vi.fn(async () => undefined),
+    start: vi.fn(async () => undefined),
     startupFailure: null as unknown,
-    snapshot: unavailableSnapshot as Record<string, unknown>,
-    unavailableSnapshot,
+    snapshot: {
+      phase: { kind: "choosing", lastApproval: null },
+      collections: [collection],
+    } as Record<string, unknown>,
+    collections: [collection],
   };
 });
 
@@ -35,25 +28,20 @@ vi.mock("../lib/connect", () => ({
   applyWorkoutCollectionSetup: gateway.applySetup,
   authorizeWorkoutCollection: gateway.authorize,
   connectErrorMessage: vi.fn((reason: unknown) => {
-    const value = reason as { problem?: { message?: string }; message?: string };
-    return value?.problem?.message ?? value?.message ?? String(reason);
+    const value = reason as { message?: string };
+    return value?.message ?? String(reason);
   }),
   connectIsRequired: vi.fn(() => true),
   recoverWorkoutPendingMutation: gateway.recover,
   refreshWorkoutPendingMutation: vi.fn(),
   selectWorkoutCollection: gateway.select,
   setWorkoutStartupFailure: vi.fn((failure: unknown) => { gateway.startupFailure = failure; }),
+  startWorkoutSession: gateway.start,
   subscribeToWorkoutMutationBusy: vi.fn(() => () => undefined),
   subscribeToWorkoutPendingMutation: vi.fn(() => () => undefined),
   subscribeToWorkoutStartupFailure: vi.fn(() => () => undefined),
-  requireWorkoutConnection: vi.fn(),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
-  workoutSession: {
-    authorize: gateway.authorize,
-    connection: vi.fn(() => gateway.connection),
-    select: gateway.select,
-    start: gateway.start,
-  },
+  workoutEntry: {},
   workoutPendingMutationSnapshot: vi.fn(() => gateway.pending),
   workoutMutationBusySnapshot: vi.fn(() => false),
   workoutSnapshot: vi.fn(() => gateway.snapshot),
@@ -63,7 +51,10 @@ vi.mock("../lib/connect", () => ({
 import ConnectGate from "./ConnectGate";
 
 beforeEach(() => {
-  gateway.snapshot = gateway.unavailableSnapshot;
+  gateway.snapshot = {
+    phase: { kind: "choosing", lastApproval: null },
+    collections: gateway.collections,
+  };
   gateway.pending = null;
   gateway.connection = null;
   gateway.startupFailure = null;
@@ -74,140 +65,119 @@ beforeEach(() => {
   gateway.recover.mockClear();
 });
 
-it("connects another collection without pinning the stale selection", async () => {
+it("opens a listed collection through the session", async () => {
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Connect another collection" }),
-  );
+  fireEvent.click(await screen.findByRole("button", { name: /Remembered workouts/ }));
 
-  expect(gateway.authorize).toHaveBeenCalledWith("choose", {
-    signal: expect.any(AbortSignal),
-    timeoutMs: 15_000,
-  });
+  expect(gateway.select).toHaveBeenCalledWith("remembered-workouts", expect.anything());
 });
 
-it("opens a remembered collection through the session without reloading", async () => {
+it("chooses another collection through the SDK chooser", async () => {
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  fireEvent.click(
-    await screen.findByRole("button", { name: /Remembered workouts/ }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Choose workout collection" }));
 
-  expect(gateway.select).toHaveBeenCalledWith("remembered-workouts");
+  expect(gateway.authorize).toHaveBeenCalledWith("choose", expect.anything());
 });
 
-it("requires explicit selected-collection authorization for declaration changes", async () => {
+it("asks for updated access before opening a rejected collection", () => {
   gateway.snapshot = {
-    ...gateway.unavailableSnapshot,
-    status: "authorization_required",
-    collectionId: "remembered-workouts",
-    info: gateway.unavailableSnapshot.connections[0],
-    capabilities: {},
+    phase: {
+      kind: "needs_approval",
+      collectionId: "remembered-workouts",
+      displayName: "Remembered workouts",
+      declined: false,
+    },
+    collections: gateway.collections,
   };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Review updated access" }));
+
+  expect(gateway.authorize).toHaveBeenCalledWith("selected", expect.anything());
+});
+
+it("applies the reviewed setup plan", () => {
+  gateway.snapshot = {
+    phase: {
+      kind: "needs_setup",
+      collectionId: "remembered-workouts",
+      collection: gateway.collections[0],
+    },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Apply workout definitions" }));
+
+  expect(gateway.applySetup).toHaveBeenCalled();
+});
+
+it("renders the connected application in the ready phase", () => {
+  gateway.connection = {};
+  gateway.snapshot = {
+    phase: {
+      kind: "ready",
+      collectionId: "remembered-workouts",
+      collection: gateway.collections[0],
+      connection: { id: "remembered-workouts", displayName: "Remembered workouts", records: { ledger: { subscribe: () => () => undefined } } },
+      rechecking: false,
+      problem: null,
+      unavailableTypes: [],
+    },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.getByText("Connected")).toBeTruthy();
+});
+
+it("offers recovery for an unsettled write", () => {
   gateway.pending = {
     collectionId: "remembered-workouts",
-    requestId: "preserved-write",
-    operation: "update",
+    requestId: "mutation-1",
+    operation: "write",
   };
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  expect(screen.queryByRole("button", { name: /Remembered workouts/ })).not.toBeInTheDocument();
-  const review = screen.getByRole("button", { name: "Review updated access" });
-  expect(review).toBeEnabled();
-  fireEvent.click(review);
-
-  expect(gateway.authorize).toHaveBeenCalledWith("selected", {
-    signal: expect.any(AbortSignal),
-    timeoutMs: 15_000,
-  });
+  expect(screen.getByText("mutation-1")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Recover write" }));
+  expect(gateway.recover).toHaveBeenCalled();
 });
 
-it("retries a failed start and does not expose collection actions first", async () => {
+it("shows a signed-out session with a sign-in action", () => {
   gateway.snapshot = {
-    status: "start_failed",
-    problem: { code: "temporarily_unavailable", message: "Registration is unavailable." },
-    connections: gateway.unavailableSnapshot.connections,
+    phase: { kind: "signed_out", notice: null },
+    collections: [],
   };
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  expect(screen.queryByRole("button", { name: /Remembered workouts/ })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
-
-  expect(gateway.start).toHaveBeenCalledWith({ timeoutMs: 15_000 });
-  expect(gateway.authorize).not.toHaveBeenCalled();
-  expect(gateway.select).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Sign in to mdbase" })).toBeEnabled();
 });
 
-it("treats a destroyed session as terminal", () => {
-  gateway.snapshot = { status: "destroyed", connections: [] };
-  render(<ConnectGate><p>Connected</p></ConnectGate>);
-
-  expect(screen.getByRole("alert")).toHaveTextContent("session has ended");
-  expect(screen.queryByRole("button")).not.toBeInTheDocument();
-});
-
-it("renders a preserved startup timeout and keeps retry available", () => {
+it("shows a described problem with its action", () => {
   gateway.snapshot = {
-    status: "not_started",
-    connections: gateway.unavailableSnapshot.connections,
-  };
-  gateway.startupFailure = {
-    problem: { code: "timeout", message: "Startup exceeded its request budget." },
-  };
-  render(<ConnectGate><p>Connected</p></ConnectGate>);
-
-  expect(screen.getByRole("alert")).toHaveTextContent("Startup exceeded its request budget.");
-  expect(screen.getByRole("button", { name: "Retry connection" })).toBeEnabled();
-});
-
-it("offers exact setup recovery and blocks setup resubmission while it is pending", () => {
-  gateway.snapshot = {
-    ...gateway.unavailableSnapshot,
-    status: "setup_review_required",
-    collectionId: "remembered-workouts",
-    info: gateway.unavailableSnapshot.connections[0],
-    capabilities: {},
-    update: { canApply: true, typePacks: [] },
-  };
-  gateway.pending = {
-    collectionId: "remembered-workouts",
-    requestId: "setup-request-1",
-    operation: "apply_collection_setup",
+    phase: {
+      kind: "problem",
+      collectionId: "remembered-workouts",
+      problem: {
+        key: "device_offline",
+        title: "Your computer is offline",
+        message: "Open mdbase connect on the computer holding this collection.",
+        action: "wait",
+        actionLabel: "Try again",
+        retryAfterMs: null,
+        updateUrl: null,
+        severity: "warning",
+        transient: true,
+        code: "unavailable",
+      },
+    },
+    collections: gateway.collections,
   };
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  expect(screen.getByText("setup-request-1")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Recover setup change" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Apply workout definitions" })).toBeDisabled();
-  expect(gateway.applySetup).not.toHaveBeenCalled();
-});
-
-it("keeps a verified collection open while the session re-checks setup", () => {
-  const checkDirectAccess = vi.fn((_options: { signal: AbortSignal }) => new Promise<never>(() => undefined));
-  gateway.connection = { collectionId: "workouts", checkDirectAccess };
-  const context = { collectionId: "workouts", connections: [] };
-  gateway.snapshot = { status: "ready", ...context };
-  const view = render(<ConnectGate><p>Connected</p></ConnectGate>);
-  expect(screen.getByText("Connected")).toBeTruthy();
-  const signal = checkDirectAccess.mock.calls[0][0].signal;
-
-  // Connection info changes (e.g. hosted -> direct route) make the SDK re-check setup.
-  gateway.snapshot = { status: "checking_setup", ...context };
-  view.rerender(<ConnectGate><p>Connected</p></ConnectGate>);
-  expect(screen.getByText("Connected")).toBeTruthy();
-  expect(signal.aborted).toBe(false);
-
-  gateway.snapshot = { status: "ready", ...context };
-  view.rerender(<ConnectGate><p>Connected</p></ConnectGate>);
-  expect(checkDirectAccess).toHaveBeenCalledTimes(1);
-  expect(signal.aborted).toBe(false);
-});
-
-it("shows the setup check before a collection has verified", () => {
-  gateway.connection = { collectionId: "workouts", checkDirectAccess: vi.fn() };
-  gateway.snapshot = { status: "checking_setup", collectionId: "workouts", connections: [] };
-  render(<ConnectGate><p>Connected</p></ConnectGate>);
-  expect(screen.queryByText("Connected")).toBeNull();
-  expect(screen.getByRole("button", { name: "Checking workout definitions…" })).toBeTruthy();
+  expect(screen.getByRole("alert")).toHaveTextContent("Open mdbase connect");
+  expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
 });
