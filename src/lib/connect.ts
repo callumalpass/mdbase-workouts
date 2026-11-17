@@ -114,7 +114,7 @@ export async function recoverWorkoutPendingMutation(
   }
   beginWorkoutMutation();
   try {
-    await connection.records.receipt(summary.requestId, requestSignal(options).signal);
+    await connection.records.receipt(summary.requestId, requestSignal(options));
     refreshWorkoutPendingMutation(connection);
   } catch (error) {
     rememberWorkoutPendingMutation(error, connection);

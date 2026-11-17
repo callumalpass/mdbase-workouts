@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MdbaseConnect } from "@mdbase-dev/sdk";
+import { createMdbase } from "@mdbase-dev/sdk";
 import manifest from "../generated/mdbase-app.json";
 import { workoutDeclaration } from "./connect";
 
@@ -14,7 +14,7 @@ describe("Workouts mdbase SDK declaration", () => {
   });
 
   it("is accepted by the SDK's declaration compiler", () => {
-    expect(() => new MdbaseConnect(workoutDeclaration)).not.toThrow();
+    expect(() => createMdbase(workoutDeclaration)).not.toThrow();
   });
 
   it("declares the joint record and file capability groups", () => {

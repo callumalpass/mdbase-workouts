@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 const productionConnectOrigin = "https://connect.mdbase.dev";
-const productionApplicationOrigin = "https://callumalpass.github.io";
+const productionApplicationOrigin = "https://workouts.mdbase.dev";
 const stagingConnectOrigin = "https://connect-staging.mdbase.dev";
 const stagingProject = "mdbase-workouts-staging";
 const stagingApplicationOrigin = `https://${stagingProject}.pages.dev`;

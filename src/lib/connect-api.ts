@@ -17,7 +17,6 @@ import type {
   WeeklyStatsResponse,
 } from "./types";
 import {
-  toPlain,
   type ContractQueryResult,
   type ContractRecordView,
   type ContractSelector,
@@ -80,8 +79,8 @@ function contract(type: WorkoutType, provider?: string): ContractSelector {
   };
 }
 
-function plain(fields: Record<string, unknown> | Map<string, unknown>): Record<string, unknown> {
-  return toPlain(fields as never) as Record<string, unknown>;
+function plain(fields: Record<string, unknown>): Record<string, unknown> {
+  return { ...fields };
 }
 
 function plainInput(value: Record<string, unknown>): Record<string, PlainValue> {
@@ -106,7 +105,7 @@ async function discoverProvider(
   client: MdbaseClient,
   options: ConnectRequestOptions = {},
 ): Promise<string> {
-  const description = await client.describe(signalFor(options, READ_TIMEOUT_MS));
+  const description = await client.describe({ signal: signalFor(options, READ_TIMEOUT_MS) });
   const descriptor = description.contracts.find(
     (candidate) =>
       candidate.id === CONTRACTS[type] &&
@@ -133,7 +132,7 @@ async function read(
   return connection.records.getContract(
     { path },
     contract(type, await providerFor(type, connection.records, options)),
-    signalFor(options, READ_TIMEOUT_MS),
+    { signal: signalFor(options, READ_TIMEOUT_MS) },
   );
 }
 
@@ -606,7 +605,7 @@ export const connectApi = {
   settings: {
     get: async (options: ConnectRequestOptions = {}) => {
       const connection = requireWorkoutConnection();
-      await connection.records.describe(signalFor(options, READ_TIMEOUT_MS));
+      await connection.records.describe({ signal: signalFor(options, READ_TIMEOUT_MS) });
       return {
         dataDir: connection.collectionId,
         configDataDir: "mdbase connect",

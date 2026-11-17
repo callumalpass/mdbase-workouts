@@ -287,9 +287,9 @@ export async function setupMockApi(page: Page): Promise<MockApiController> {
 
     if (path === "/api/today" && method === "GET") {
       requests.todayReads += 1;
-      const todaysSessions = sessions.filter((s) => s.date.startsWith(today));
+      const todaysSessions = sessions.filter((s) => localDay(new Date(s.date)) === today);
       const todaysPlans = plans.filter((p) => p.date === today);
-      const todaysQuickLogs = quickLogs.filter((q) => q.logged_at.startsWith(today));
+      const todaysQuickLogs = quickLogs.filter((q) => localDay(new Date(q.logged_at)) === today);
       return json(route, {
         date: today,
         plans: todaysPlans,

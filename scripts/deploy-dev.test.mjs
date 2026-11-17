@@ -38,7 +38,7 @@ describe("isolated Workouts staging deployment", () => {
   });
 
   it("rejects the production application origin", () => {
-    const result = check({ MDBASE_WORKOUTS_DEV_ORIGIN: "https://callumalpass.github.io" });
+    const result = check({ MDBASE_WORKOUTS_DEV_ORIGIN: "https://workouts.mdbase.dev" });
     assert.equal(result.status, 2);
     assert.match(result.stderr, /refuses the production Workouts origin/u);
   });

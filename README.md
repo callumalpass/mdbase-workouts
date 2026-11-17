@@ -2,7 +2,7 @@
 
 A workout tracking application that stores all data as markdown files with YAML frontmatter, managed by [mdbase](https://github.com/callumalpass/mdbase-spec). Users plan workouts, log sessions with per-set tracking, record quick one-off exercises, and browse their history -- all persisted as human-readable `.md` files on disk rather than in a traditional database.
 
-The hosted app is available at [callumalpass.github.io/mdbase-workouts](https://callumalpass.github.io/mdbase-workouts/). It uses the `@mdbase-dev/sdk` browser SDK to open a cloud copy, a Private collection, or a local workout collection.
+The hosted app is available at [workouts.mdbase.dev](https://workouts.mdbase.dev/). It uses the `@mdbase-dev/sdk` browser SDK to open a cloud copy, a Private collection, or a local workout collection.
 
 This project is an implementation of [mdbase-spec](https://github.com/callumalpass/mdbase-spec).
 

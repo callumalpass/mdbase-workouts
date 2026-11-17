@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 import { dataContractDigest } from "@callumalpass/mdbase";
 import { parse as parseYaml } from "yaml";
 
-const defaultOrigin = "https://callumalpass.github.io";
-const defaultBasePath = "/mdbase-workouts/";
+const defaultOrigin = "https://workouts.mdbase.dev";
+const defaultBasePath = "/";
 const origin = (process.env.MDBASE_WORKOUTS_ORIGIN ?? defaultOrigin).replace(/\/$/, "");
 const basePath = normalizeBasePath(process.env.MDBASE_WORKOUTS_BASE_PATH ?? defaultBasePath);
 const appUrl = new URL(basePath, `${origin}/`).href;
