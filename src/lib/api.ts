@@ -17,7 +17,7 @@ import type {
   TodayData,
   WeeklyStatsResponse,
 } from "./types";
-import { workoutSnapshot } from "./connect";
+import { connectIsRequired } from "./connect";
 import { connectApi } from "./connect-api";
 import { clearWorkoutCache } from "./workout-cache";
 
@@ -25,7 +25,7 @@ const BASE = "/api";
 
 export interface ApiRequestOptions {
   signal?: AbortSignal;
-  timeoutMs?: number | null;
+  timeoutMs?: number;
 }
 
 async function request<T>(path: string, init?: RequestInit, options: ApiRequestOptions = {}): Promise<T> {
@@ -33,7 +33,7 @@ async function request<T>(path: string, init?: RequestInit, options: ApiRequestO
   const abort = () => controller.abort(options.signal?.reason);
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
-  const timer = options.timeoutMs == null
+  const timer = options.timeoutMs === undefined
     ? undefined
     : window.setTimeout(
       () => controller.abort(new DOMException(`Workout request timed out after ${options.timeoutMs}ms`, "TimeoutError")),
@@ -131,9 +131,7 @@ const localApi = {
   },
 };
 
-export const api = new Proxy(localApi, {
-  get(target, property, receiver) {
-    const backend = workoutSnapshot().status === "ready" ? connectApi : target;
-    return Reflect.get(backend, property, receiver);
-  },
-}) as typeof localApi;
+// A published build always reads the collection through mdbase; ConnectGate
+// renders the app only once one is open. The local /api server is for
+// development without Connect.
+export const api: typeof localApi = connectIsRequired() ? connectApi : localApi;

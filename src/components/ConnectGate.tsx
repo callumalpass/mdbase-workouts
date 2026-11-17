@@ -10,24 +10,16 @@ import {
   authorizeWorkoutCollection,
   connectErrorMessage,
   connectIsRequired,
-  recoverWorkoutPendingMutation,
-  refreshWorkoutPendingMutation,
   selectWorkoutCollection,
-  setWorkoutStartupFailure,
   startWorkoutSession,
-  subscribeToWorkoutMutationBusy,
-  subscribeToWorkoutPendingMutation,
   subscribeToWorkoutSession,
   subscribeToWorkoutStartupFailure,
-  workoutMutationBusySnapshot,
-  workoutPendingMutationSnapshot,
   workoutSnapshot,
   workoutStartupFailureSnapshot,
-  type ConnectRequestOptions,
-  type WorkoutConnection,
 } from "../lib/connect";
-import { invalidateConnectApiCache } from "../lib/connect-api";
+import { followWorkoutCollection, resetWorkoutCollectionCache } from "../lib/connect-api";
 import { describeError, type MdbaseErrorAction, type MdbasePhase } from "@mdbase-dev/sdk";
+import SyncStatus from "./SyncStatus";
 
 export default function ConnectGate({ children }: { children: ReactNode }) {
   if (!connectIsRequired()) return <>{children}</>;
@@ -38,14 +30,6 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   const snapshot = useSyncExternalStore(
     subscribeToWorkoutSession,
     workoutSnapshot,
-  );
-  const mutationBusy = useSyncExternalStore(
-    subscribeToWorkoutMutationBusy,
-    workoutMutationBusySnapshot,
-  );
-  const pending = useSyncExternalStore(
-    subscribeToWorkoutPendingMutation,
-    workoutPendingMutationSnapshot,
   );
   const startupFailure = useSyncExternalStore(
     subscribeToWorkoutStartupFailure,
@@ -59,10 +43,6 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     foregroundRequest.current?.abort("Workout connection screen closed");
   }, []);
-
-  useEffect(() => {
-    refreshWorkoutPendingMutation();
-  }, [phase, pending?.requestId]);
 
   useEffect(() => {
     if (phase.kind !== "ready" && startupFailure) {
@@ -79,7 +59,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   }
 
   async function act(action: () => Promise<void>): Promise<void> {
-    if (busy || mutationBusy || pending) return;
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -91,15 +71,16 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     }
   }
 
-  // Sign-in and approval wait on the person in the Connect window, which has its
-  // own expiry. They take no timeout: aborting one closes that window, and a
-  // Private collection pick still in flight then stops the SDK
-  // ("application_worker_binding"). Only machine work (setup, opening) is timed.
-  function requestOptions(timeoutMs?: number): ConnectRequestOptions {
+  // Nothing here is timed. Sign-in and approval wait on the person in the
+  // Connect window, and aborting one closes that window; a Private collection
+  // pick still in flight then stops the SDK ("application_worker_binding").
+  // Opening and setup are bounded by the SDK. The signal only cancels work
+  // this screen no longer shows.
+  function requestOptions(): { signal: AbortSignal } {
     foregroundRequest.current?.abort("A newer workout connection action superseded this one");
     const controller = new AbortController();
     foregroundRequest.current = controller;
-    return timeoutMs === undefined ? { signal: controller.signal } : { signal: controller.signal, timeoutMs };
+    return { signal: controller.signal };
   }
 
   const chooser = snapshot.collections
@@ -126,21 +107,21 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           await authorizeWorkoutCollection("selected", requestOptions());
           break;
         case "needs_setup":
-          await applyWorkoutCollectionSetup(requestOptions(30_000));
+          await applyWorkoutCollectionSetup(requestOptions());
           break;
         case "problem":
           if (phase.problem.action === "set_up") {
-            await applyWorkoutCollectionSetup(requestOptions(30_000));
+            await applyWorkoutCollectionSetup(requestOptions());
           } else if (phase.problem.action === "sign_in") {
             await authorizeWorkoutCollection("choose", requestOptions());
           } else if (phase.problem.action === "approve") {
             await authorizeWorkoutCollection("selected", requestOptions());
           } else {
-            await startWorkoutSession(requestOptions(15_000));
+            await startWorkoutSession(requestOptions());
           }
           break;
         default:
-          await startWorkoutSession(requestOptions(15_000));
+          await startWorkoutSession(requestOptions());
       }
     }),
   }));
@@ -154,7 +135,6 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
 
   return (
     <main className="min-h-[100dvh] overflow-y-auto px-5 py-10 sm:py-16">
-      {pending && <PendingMutationRecovery pending={pending} />}
       <section className="mx-auto max-w-md border border-rule bg-card" aria-labelledby="connect-title">
         <header className="border-b border-rule px-5 py-4 flex items-center justify-between gap-4">
           <div>
@@ -214,11 +194,10 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
                   <button
                     key={collection.collectionId}
                     type="button"
-                    disabled={busy || mutationBusy || pending !== null || Boolean(reason)}
+                    disabled={busy || Boolean(reason)}
                     className="flex w-full items-center justify-between gap-4 border-b border-rule px-3 py-3 text-left last:border-b-0 active:bg-paper disabled:opacity-50"
                     onClick={() => void act(async () => {
-                      await selectWorkoutCollection(collection.collectionId, requestOptions(15_000));
-                      invalidateConnectApiCache();
+                      await selectWorkoutCollection(collection.collectionId, requestOptions());
                     })}
                   >
                     <span>
@@ -239,7 +218,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           {!terminal && !unavailable && action.visible && (
             <button
               type="button"
-              disabled={busy || starting || mutationBusy || pending !== null}
+              disabled={busy || starting}
               onClick={() => void action.perform()}
               className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
             >
@@ -322,61 +301,20 @@ function ConnectedCollection({
   children: ReactNode;
 }) {
   useEffect(() => {
-    invalidateConnectApiCache();
-    refreshWorkoutPendingMutation();
-    const stop = connection.records.ledger.subscribe(() => refreshWorkoutPendingMutation());
+    resetWorkoutCollectionCache();
+    const stop = followWorkoutCollection({
+      collectionId: connection.id,
+      displayName: connection.displayName,
+      records: connection.records,
+    });
     return () => {
       stop();
-      invalidateConnectApiCache();
+      resetWorkoutCollectionCache();
     };
   }, [connection]);
 
   return <>
-    <PendingMutationRecovery />
+    <SyncStatus />
     {children}
   </>;
-}
-
-function PendingMutationRecovery({
-  pending: suppliedPending,
-}: {
-  pending?: ReturnType<typeof workoutPendingMutationSnapshot>;
-}) {
-  const storedPending = useSyncExternalStore(
-    subscribeToWorkoutPendingMutation,
-    workoutPendingMutationSnapshot,
-  );
-  const pending = suppliedPending ?? storedPending;
-  const [recovering, setRecovering] = useState(false);
-  const [recoveryError, setRecoveryError] = useState("");
-
-  async function recover() {
-    if (!pending) return;
-    setRecovering(true);
-    setRecoveryError("");
-    try {
-      await recoverWorkoutPendingMutation({ timeoutMs: 20_000 });
-      invalidateConnectApiCache();
-      window.location.reload();
-    } catch (error) {
-      setRecoveryError(connectErrorMessage(error));
-    } finally {
-      setRecovering(false);
-    }
-  }
-
-  if (!pending) return null;
-  return <aside role="status" className="mx-auto mb-3 mt-3 max-w-2xl border border-blush bg-paper px-4 py-3 text-sm">
-      <p>
-        This workout write may have completed.
-        Recover write <code>{pending.requestId}</code> before making it again.
-      </p>
-      {recoveryError && <p role="alert" className="mt-2 text-blush">{recoveryError}</p>}
-      <button
-        type="button"
-        disabled={recovering}
-        onClick={() => void recover()}
-        className="mt-3 bg-blush px-3 py-2 font-semibold text-paper disabled:opacity-50"
-      >{recovering ? "Recovering…" : "Recover write"}</button>
-    </aside>;
 }

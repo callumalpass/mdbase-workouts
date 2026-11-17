@@ -7,16 +7,13 @@ import {
   startWorkoutSession,
 } from "./lib/connect";
 
-async function bootstrap() {
-  if (connectIsRequired()) {
-    await startWorkoutSession({ timeoutMs: 15_000 });
-  }
+// The connection screen follows the session's phase while it starts, so render
+// at once. Starting is not timed: a Private collection can take a while to
+// open, and aborting the start would only stop it.
+if (connectIsRequired()) void startWorkoutSession();
 
-  ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-}
-
-void bootstrap();
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);

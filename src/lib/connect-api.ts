@@ -17,16 +17,16 @@ import type {
   WeeklyStatsResponse,
 } from "./types";
 import {
+  describeError,
   type ContractQueryResult,
   type ContractRecordView,
   type ContractSelector,
   type MdbaseClient,
   type PlainValue,
+  type Write,
 } from "@mdbase-dev/sdk";
 import {
-  rememberWorkoutPendingMutation,
   requireWorkoutConnection,
-  runWorkoutMutation,
   type ConnectRequestOptions,
   type WorkoutConnection,
 } from "./connect";
@@ -53,9 +53,9 @@ const CONTRACTS: Record<WorkoutType, string> = {
   session: "mdbase.workouts.session",
 };
 
-const SOURCE_FRESH_MS = 30_000;
-const READ_TIMEOUT_MS = 10_000;
-const WRITE_TIMEOUT_MS = 20_000;
+// Scans are kept until the record set reports a change; this only bounds how
+// long a scan can outlive a change feed that has stalled.
+const SOURCE_FRESH_MS = 5 * 60_000;
 const QUERY_PAGE_SIZE = 128;
 const MAX_SOURCE_ROWS = 100_000;
 let cacheGeneration = 0;
@@ -105,7 +105,7 @@ async function discoverProvider(
   client: MdbaseClient,
   options: ConnectRequestOptions = {},
 ): Promise<string> {
-  const description = await client.describe({ signal: signalFor(options, READ_TIMEOUT_MS) });
+  const description = await client.describe({ signal: signalFor(options) });
   const descriptor = description.contracts.find(
     (candidate) =>
       candidate.id === CONTRACTS[type] &&
@@ -132,8 +132,49 @@ async function read(
   return connection.records.getContract(
     { path },
     contract(type, await providerFor(type, connection.records, options)),
-    { signal: signalFor(options, READ_TIMEOUT_MS) },
+    { signal: signalFor(options) },
   );
+}
+
+/**
+ * A write resolves once it is kept on this device, so it works offline. Settle
+ * it to read the record back: "saved_on_device" is a success (it syncs later,
+ * and the sync status shows that), "rejected" was not saved, and "unknown" may
+ * have been saved and must not be entered again.
+ */
+async function settled(
+  write: Promise<Write>,
+  selector: ContractSelector,
+  connection: WorkoutConnection,
+  options: ConnectRequestOptions,
+): Promise<ContractRecordView | null> {
+  try {
+    // Nothing is awaited before settle takes the write, so a refusal is its outcome.
+    const result = await connection.records.settle(write, {
+      signal: options.signal,
+      read: { contract: selector },
+    });
+    switch (result.outcome) {
+      case "rejected":
+        throw new WorkoutWriteError(result.problem, "rejected");
+      case "unknown":
+        throw new WorkoutWriteError(result.problem, "unknown");
+      default:
+        return result.contractRecord ?? null;
+    }
+  } finally {
+    invalidateConnectApiCache();
+  }
+}
+
+export class WorkoutWriteError extends Error {
+  constructor(readonly problem: unknown, readonly outcome: "rejected" | "unknown") {
+    const described = describeError(problem)?.message;
+    super(outcome === "unknown"
+      ? "This change may already be saved. Check before entering it again."
+      : described ?? "The workout collection did not accept this change.");
+    this.name = "WorkoutWriteError";
+  }
 }
 
 async function create(
@@ -141,22 +182,13 @@ async function create(
   input: { path: string; frontmatter: Record<string, unknown> },
   connection: WorkoutConnection,
   options: ConnectRequestOptions = {},
-): Promise<ContractRecordView> {
-  const provider = await providerFor(type, connection.records, options);
-  try {
-    const write = await connection.records.create({
-      path: input.path,
-      frontmatter: plainInput(input.frontmatter),
-      contract: contract(type, provider),
-    }, { signal: signalFor(options, WRITE_TIMEOUT_MS) });
-    await write.confirmed;
-    return await read(type, input.path, options, connection);
-  } catch (error) {
-    rememberWorkoutPendingMutation(error, connection);
-    throw error;
-  } finally {
-    invalidateConnectApiCache();
-  }
+): Promise<ContractRecordView | null> {
+  const selector = contract(type, await providerFor(type, connection.records, options));
+  return settled(connection.records.create({
+    path: input.path,
+    frontmatter: plainInput(input.frontmatter),
+    contract: selector,
+  }), selector, connection, options);
 }
 
 async function update(
@@ -165,27 +197,14 @@ async function update(
   patch: Record<string, unknown>,
   connection: WorkoutConnection,
   options: ConnectRequestOptions = {},
-): Promise<ContractRecordView> {
+): Promise<ContractRecordView | null> {
   const current = await read(type, path, options, connection);
+  const selector = contract(type, await providerFor(type, connection.records, options));
   const { path: _path, revision: _revision, ...frontmatterPatch } = patch;
-  try {
-    const write = await connection.records.update(
-      { path },
-      {
-        patch: plainInput(frontmatterPatch),
-        ifRevision: current.revision,
-        contract: contract(type, await providerFor(type, connection.records, options)),
-      },
-      { signal: signalFor(options, WRITE_TIMEOUT_MS) },
-    );
-    await write.confirmed;
-    return await read(type, path, options, connection);
-  } catch (error) {
-    rememberWorkoutPendingMutation(error, connection);
-    throw error;
-  } finally {
-    invalidateConnectApiCache();
-  }
+  return settled(connection.records.update(
+    { path },
+    { patch: plainInput(frontmatterPatch), ifRevision: current.revision, contract: selector },
+  ), selector, connection, options);
 }
 
 async function remove(
@@ -195,36 +214,87 @@ async function remove(
   options: ConnectRequestOptions = {},
 ): Promise<void> {
   const current = await read(type, path, options, connection);
-  try {
-    const write = await connection.records.delete(
-      { path },
-      {
-        ifRevision: current.revision,
-        contract: contract(type, await providerFor(type, connection.records, options)),
-        signal: signalFor(options, WRITE_TIMEOUT_MS),
-      },
-    );
-    await write.confirmed;
-  } catch (error) {
-    rememberWorkoutPendingMutation(error, connection);
-    throw error;
-  } finally {
-    invalidateConnectApiCache();
-  }
+  const selector = contract(type, await providerFor(type, connection.records, options));
+  await settled(connection.records.delete(
+    { path },
+    { ifRevision: current.revision, contract: selector },
+  ), selector, connection, options);
 }
 
+/** The collection's records changed: drop every copy and tell the views. */
 export function invalidateConnectApiCache(): void {
+  dropScans();
+  clearWorkoutCache();
+  for (const listener of dataListeners) listener();
+}
+
+function dropScans(): void {
   cacheGeneration += 1;
   sourceCache.clear();
+}
+
+const dataListeners = new Set<() => void>();
+
+/** Called after the open collection's workout records change, here or elsewhere. */
+export function subscribeToWorkoutData(listener: () => void): () => void {
+  dataListeners.add(listener);
+  return () => dataListeners.delete(listener);
+}
+
+/**
+ * Follow the open collection: a record set over the workout types is read once
+ * and then kept current by the SDK, through reconnects. Each change it reports
+ * (from this device or another) drops the scans the views read from, and the
+ * views read again. Returns a function that stops following.
+ */
+export function followWorkoutCollection(connection: WorkoutConnection): () => void {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let primed = false;
+  void (async () => {
+    const types = await Promise.all(
+      (Object.keys(CONTRACTS) as WorkoutType[]).map((type) =>
+        providerFor(type, connection.records, { signal: controller.signal })),
+    );
+    if (controller.signal.aborted) return;
+    const set = connection.records.recordSet({ types, signal: controller.signal });
+    set.subscribe((changes) => {
+      // The first complete read only repeats what the views already loaded.
+      if (!primed || !changes.length) return;
+      clearTimeout(timer);
+      timer = setTimeout(invalidateConnectApiCache, 150);
+    });
+    await set.ready;
+    primed = true;
+  })().catch(() => {
+    // Following is an improvement over reading on demand; views still read
+    // when opened and after every write made here.
+  });
+  return () => {
+    clearTimeout(timer);
+    controller.abort();
+  };
+}
+
+/**
+ * A collection was opened or closed: forget its scans and providers. The saved
+ * pages for warm starts are kept; they are stored per collection.
+ */
+export function resetWorkoutCollectionCache(): void {
   providerCache.clear();
-  clearWorkoutCache();
+  dropScans();
 }
 
 function record<T>(row: QueryRow): T {
   return { path: row.path, ...row.frontmatter } as T;
 }
 
-function operationRecord<T>(value: ContractRecordView, fallbackPath: string): T {
+function operationRecord<T>(
+  value: ContractRecordView | null,
+  fallbackPath: string,
+  written: Record<string, unknown> = {},
+): T {
+  if (!value) return { ...written, path: fallbackPath } as T;
   return {
     ...plain(value.fields),
     path: String(value.path ?? fallbackPath),
@@ -340,7 +410,7 @@ async function collectQueryPages(
       {
         pageSize: QUERY_PAGE_SIZE,
         cursor,
-        signal: signalFor(options, options.timeoutMs ?? READ_TIMEOUT_MS),
+        signal: signalFor(options),
       },
     );
     const paths = new Map(page.page.records.map((record) => [record.id, record.path]));
@@ -385,11 +455,9 @@ const allQuickLogRows = async (options: ConnectRequestOptions = {}) =>
   );
 const allTemplateRows = (options: ConnectRequestOptions = {}) => rows("plan-template", {}, options);
 
-function signalFor(
-  options: ConnectRequestOptions,
-  timeoutMs: number,
-): AbortSignal | undefined {
-  const timeout = options.timeoutMs ?? timeoutMs;
+/** Reads are answered by this device's replica; only a caller's own deadline applies. */
+function signalFor(options: ConnectRequestOptions): AbortSignal | undefined {
+  const timeout = options.timeoutMs;
   const timeoutSignal = timeout === undefined ? undefined : AbortSignal.timeout(timeout);
   if (options.signal && timeoutSignal) return AbortSignal.any([options.signal, timeoutSignal]);
   return options.signal ?? timeoutSignal;
@@ -491,16 +559,21 @@ async function weeklyStats(timeZone?: string, options: ConnectRequestOptions = {
   });
 }
 
+function mutate<Value>(operation: (connection: WorkoutConnection) => Promise<Value>): Promise<Value> {
+  return operation(requireWorkoutConnection());
+}
+
 export const connectApi = {
   exercises: {
     list: async (options: ConnectRequestOptions = {}) => (await allExerciseRows(options)).map((row) => record<Exercise>(row)),
     get: async (slug: string, options: ConnectRequestOptions = {}) => operationRecord<Exercise>(await read("exercise", `exercises/${slug}.md`, options), `exercises/${slug}.md`),
     history: exerciseHistory,
-    create: (data: CreateExerciseInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
+    create: (data: CreateExerciseInput, options: ConnectRequestOptions = {}) => mutate(async (connection) => {
       const path = `exercises/${slugify(data.name)}.md`;
-      return operationRecord<Exercise>(await create("exercise", { path, frontmatter: { ...data } }, connection, options), path);
+      const frontmatter = { ...data };
+      return operationRecord<Exercise>(await create("exercise", { path, frontmatter }, connection, options), path, frontmatter);
     }),
-    update: (slug: string, data: Partial<CreateExerciseInput>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data, connection, options), `exercises/${slug}.md`)),
+    update: (slug: string, data: Partial<CreateExerciseInput>, options: ConnectRequestOptions = {}) => mutate(async (connection) => operationRecord<Exercise>(await update("exercise", `exercises/${slug}.md`, data, connection, options), `exercises/${slug}.md`)),
     lastSets: async (slugs: string[], options: ConnectRequestOptions = {}) => {
       const sessionRows = await allSessionRows(options);
       const remaining = new Set(slugs);
@@ -521,11 +594,11 @@ export const connectApi = {
   },
   quickLogs: {
     list: async (limit = 50, options: ConnectRequestOptions = {}) => (await allQuickLogRows(options)).slice(0, limit).map((row) => record<QuickLog>(row)),
-    create: (data: CreateQuickLogInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
+    create: (data: CreateQuickLogInput, options: ConnectRequestOptions = {}) => mutate(async (connection) => {
       const now = new Date();
       const path = `quick-logs/${timestamp(now)}.md`;
       const frontmatter = { ...data, exercise: wikilink("exercises", data.exercise), logged_at: now.toISOString() };
-      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }, connection, options), path);
+      return operationRecord<QuickLog>(await create("quick-log", { path, frontmatter }, connection, options), path, frontmatter);
     }),
   },
   sessions: {
@@ -535,7 +608,7 @@ export const connectApi = {
       return { sessions, total: all.length, hasMore: offset + sessions.length < all.length };
     },
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Session>(await read("session", `sessions/${id}.md`, options), `sessions/${id}.md`),
-    create: (data: CreateSessionInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
+    create: (data: CreateSessionInput, options: ConnectRequestOptions = {}) => mutate(async (connection) => {
       const now = new Date();
       const id = timestamp(now);
       const path = `sessions/${id}.md`;
@@ -545,12 +618,12 @@ export const connectApi = {
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
         ...(data.plan ? { plan: wikilink("plans", data.plan) } : {}),
       };
-      const session = operationRecord<Session>(await create("session", { path, frontmatter }, connection, options), path);
+      const session = operationRecord<Session>(await create("session", { path, frontmatter }, connection, options), path, frontmatter);
       if (data.plan) await update("plan", `plans/${data.plan}.md`, { status: "completed", session: wikilink("sessions", id) }, connection, options);
       return session;
     }),
-    update: (id: string, data: Partial<Session>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data, connection, options), `sessions/${id}.md`)),
-    delete: (id: string, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => { await remove("session", `sessions/${id}.md`, connection, options); return { ok: true }; }),
+    update: (id: string, data: Partial<Session>, options: ConnectRequestOptions = {}) => mutate(async (connection) => operationRecord<Session>(await update("session", `sessions/${id}.md`, data, connection, options), `sessions/${id}.md`)),
+    delete: (id: string, options: ConnectRequestOptions = {}) => mutate(async (connection) => { await remove("session", `sessions/${id}.md`, connection, options); return { ok: true }; }),
   },
   plans: {
     list: async (status?: string, options: ConnectRequestOptions = {}) => {
@@ -560,7 +633,7 @@ export const connectApi = {
       return plans.sort((left, right) => right.date.localeCompare(left.date));
     },
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<Plan>(await read("plan", `plans/${id}.md`, options), `plans/${id}.md`),
-    create: (data: CreatePlanInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
+    create: (data: CreatePlanInput, options: ConnectRequestOptions = {}) => mutate(async (connection) => {
       const date = data.date || dateKey(new Date());
       const id = `${date}-${slugify(data.title)}`;
       const path = `plans/${id}.md`;
@@ -570,20 +643,20 @@ export const connectApi = {
         status: "scheduled",
         exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })),
       };
-      return operationRecord<Plan>(await create("plan", { path, frontmatter }, connection, options), path);
+      return operationRecord<Plan>(await create("plan", { path, frontmatter }, connection, options), path, frontmatter);
     }),
-    update: (id: string, data: Partial<Plan>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data, connection, options), `plans/${id}.md`)),
+    update: (id: string, data: Partial<Plan>, options: ConnectRequestOptions = {}) => mutate(async (connection) => operationRecord<Plan>(await update("plan", `plans/${id}.md`, data, connection, options), `plans/${id}.md`)),
   },
   planTemplates: {
     list: async (options: ConnectRequestOptions = {}) => (await allTemplateRows(options)).map((row) => record<PlanTemplate>(row)),
     get: async (id: string, options: ConnectRequestOptions = {}) => operationRecord<PlanTemplate>(await read("plan-template", `plan-templates/${id}.md`, options), `plan-templates/${id}.md`),
-    create: (data: CreatePlanTemplateInput, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => {
+    create: (data: CreatePlanTemplateInput, options: ConnectRequestOptions = {}) => mutate(async (connection) => {
       const path = `plan-templates/${slugify(data.title)}.md`;
       const frontmatter = { ...data, exercises: data.exercises.map((item) => ({ ...item, exercise: wikilink("exercises", item.exercise) })) };
-      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }, connection, options), path);
+      return operationRecord<PlanTemplate>(await create("plan-template", { path, frontmatter }, connection, options), path, frontmatter);
     }),
-    update: (id: string, data: Partial<PlanTemplate>, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data, connection, options), `plan-templates/${id}.md`)),
-    delete: (id: string, options: ConnectRequestOptions = {}) => runWorkoutMutation(async (connection) => { await remove("plan-template", `plan-templates/${id}.md`, connection, options); return { ok: true }; }),
+    update: (id: string, data: Partial<PlanTemplate>, options: ConnectRequestOptions = {}) => mutate(async (connection) => operationRecord<PlanTemplate>(await update("plan-template", `plan-templates/${id}.md`, data, connection, options), `plan-templates/${id}.md`)),
+    delete: (id: string, options: ConnectRequestOptions = {}) => mutate(async (connection) => { await remove("plan-template", `plan-templates/${id}.md`, connection, options); return { ok: true }; }),
   },
   stats: { get: stats, weekly: weeklyStats },
   today: async (timeZone?: string, options: ConnectRequestOptions = {}) => {
@@ -603,10 +676,9 @@ export const connectApi = {
     };
   },
   settings: {
-    get: async (options: ConnectRequestOptions = {}) => {
+    get: async (_options: ConnectRequestOptions = {}) => {
       const connection = requireWorkoutConnection();
-      await connection.records.describe({ signal: signalFor(options, READ_TIMEOUT_MS) });
-      return {
+        return {
         dataDir: connection.collectionId,
         configDataDir: "mdbase connect",
         collectionName: connection.displayName,

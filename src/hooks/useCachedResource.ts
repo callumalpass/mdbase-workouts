@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadWorkoutCache, readWorkoutCache } from "../lib/workout-cache";
 import type { ApiRequestOptions } from "../lib/api";
+import { subscribeToWorkoutData } from "../lib/connect-api";
 
 const DEFAULT_FRESH_MS = 30_000;
 
@@ -23,6 +24,8 @@ export function useCachedResource<T>({
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
+  // A re-read after a change keeps showing what is on screen until it lands.
+  const shown = useRef(data !== null);
 
   const run = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
@@ -34,7 +37,7 @@ export function useCachedResource<T>({
       return cached.value;
     }
 
-    if (!cached) setLoading(true);
+    if (!cached && !shown.current) setLoading(true);
     setError(null);
     request.current?.abort("A newer workout request superseded this one");
     const controller = new AbortController();
@@ -45,12 +48,13 @@ export function useCachedResource<T>({
       }));
       const value = await awaitWithSignal(pending, controller.signal);
       if (currentGeneration === generation.current) {
+        shown.current = true;
         setData(value);
         setError(null);
       }
       return value;
     } catch (reason) {
-      if (currentGeneration === generation.current && !cached && !controller.signal.aborted) {
+      if (currentGeneration === generation.current && !cached && !shown.current && !controller.signal.aborted) {
         setError(reason instanceof Error ? reason.message : errorMessage);
       }
       return null;
@@ -63,6 +67,7 @@ export function useCachedResource<T>({
   useEffect(() => {
     const cached = readWorkoutCache<T>(cacheKey);
     initial.current = cached;
+    shown.current = cached !== null;
     setData(cached?.value ?? null);
     setLoading(cached === null);
     setError(null);
@@ -75,6 +80,9 @@ export function useCachedResource<T>({
   }, [cacheKey, run]);
 
   const refresh = useCallback(() => run(true), [run]);
+
+  // Records changed, on this device or another: read again.
+  useEffect(() => subscribeToWorkoutData(() => void run(true)), [run]);
 
   return { data, loading, error, refresh };
 }
