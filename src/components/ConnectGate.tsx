@@ -91,11 +91,15 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
     }
   }
 
-  function requestOptions(timeoutMs: number): ConnectRequestOptions {
+  // Sign-in and approval wait on the person in the Connect window, which has its
+  // own expiry. They take no timeout: aborting one closes that window, and a
+  // Private collection pick still in flight then stops the SDK
+  // ("application_worker_binding"). Only machine work (setup, opening) is timed.
+  function requestOptions(timeoutMs?: number): ConnectRequestOptions {
     foregroundRequest.current?.abort("A newer workout connection action superseded this one");
     const controller = new AbortController();
     foregroundRequest.current = controller;
-    return { signal: controller.signal, timeoutMs };
+    return timeoutMs === undefined ? { signal: controller.signal } : { signal: controller.signal, timeoutMs };
   }
 
   const chooser = snapshot.collections
@@ -116,10 +120,10 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
       switch (phase.kind) {
         case "signed_out":
         case "choosing":
-          await authorizeWorkoutCollection("choose", requestOptions(15_000));
+          await authorizeWorkoutCollection("choose", requestOptions());
           break;
         case "needs_approval":
-          await authorizeWorkoutCollection("selected", requestOptions(15_000));
+          await authorizeWorkoutCollection("selected", requestOptions());
           break;
         case "needs_setup":
           await applyWorkoutCollectionSetup(requestOptions(30_000));
@@ -128,9 +132,9 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           if (phase.problem.action === "set_up") {
             await applyWorkoutCollectionSetup(requestOptions(30_000));
           } else if (phase.problem.action === "sign_in") {
-            await authorizeWorkoutCollection("choose", requestOptions(15_000));
+            await authorizeWorkoutCollection("choose", requestOptions());
           } else if (phase.problem.action === "approve") {
-            await authorizeWorkoutCollection("selected", requestOptions(15_000));
+            await authorizeWorkoutCollection("selected", requestOptions());
           } else {
             await startWorkoutSession(requestOptions(15_000));
           }
