@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp, type MemoryContract, type TestApp } from "@mdbase-dev/sdk/testing";
-import { connectApi, invalidateConnectApiCache } from "./connect-api";
 import {
+  connectApi,
+  followWorkoutCollection,
+  invalidateConnectApiCache,
+  subscribeToWorkoutData,
+  WorkoutWriteError,
+} from "./connect-api";
+import {
+  requireWorkoutConnection,
   setWorkoutEntryForTests,
   workoutDeclaration,
 } from "./connect";
@@ -178,5 +185,43 @@ describe("workout contract access", () => {
     const settings = await connectApi.settings.get();
     expect(settings.collectionName).toBe("Workouts");
     expect(settings.dataDir).toBe(test.client().collection);
+  });
+
+  it("reports a refused write instead of returning a record", async () => {
+    await testApp();
+    const exercise = {
+      name: "Pull-up",
+      muscle_groups: ["back"],
+      equipment: "bodyweight",
+      tracking: "reps_only" as const,
+    };
+    await connectApi.exercises.create(exercise);
+
+    await expect(connectApi.exercises.create(exercise)).rejects.toBeInstanceOf(WorkoutWriteError);
+  });
+
+  it("tells the views when the collection changes elsewhere", async () => {
+    const test = await testApp();
+    const stop = followWorkoutCollection(requireWorkoutConnection());
+    try {
+      expect(await connectApi.exercises.list()).toEqual([]);
+      const changed = new Promise<void>((resolve) => {
+        const off = subscribeToWorkoutData(() => { off(); resolve(); });
+      });
+      // Let the record set finish its first read before the change.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Another device's write, as the replica applies it.
+      await test.client().create({
+        path: "exercises/dip.md",
+        frontmatter: { name: "Dip", muscle_groups: ["triceps"], equipment: "bodyweight", tracking: "reps_only" },
+        contract: { id: "mdbase.workouts.exercise", version: "1.0.0" },
+      });
+      await changed;
+
+      expect(await connectApi.exercises.list()).toMatchObject([{ name: "Dip" }]);
+    } finally {
+      stop();
+    }
   });
 });

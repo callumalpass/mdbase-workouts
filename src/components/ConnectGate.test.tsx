@@ -11,8 +11,7 @@ const gateway = vi.hoisted(() => {
     applySetup: vi.fn(),
     authorize: vi.fn(),
     connection: null as Record<string, unknown> | null,
-    pending: null as Record<string, unknown> | null,
-    recover: vi.fn(),
+    follow: vi.fn(() => () => undefined),
     select: vi.fn(async () => undefined),
     start: vi.fn(async () => undefined),
     startupFailure: null as unknown,
@@ -32,20 +31,17 @@ vi.mock("../lib/connect", () => ({
     return value?.message ?? String(reason);
   }),
   connectIsRequired: vi.fn(() => true),
-  recoverWorkoutPendingMutation: gateway.recover,
-  refreshWorkoutPendingMutation: vi.fn(),
   selectWorkoutCollection: gateway.select,
-  setWorkoutStartupFailure: vi.fn((failure: unknown) => { gateway.startupFailure = failure; }),
   startWorkoutSession: gateway.start,
-  subscribeToWorkoutMutationBusy: vi.fn(() => () => undefined),
-  subscribeToWorkoutPendingMutation: vi.fn(() => () => undefined),
   subscribeToWorkoutStartupFailure: vi.fn(() => () => undefined),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
-  workoutEntry: {},
-  workoutPendingMutationSnapshot: vi.fn(() => gateway.pending),
-  workoutMutationBusySnapshot: vi.fn(() => false),
   workoutSnapshot: vi.fn(() => gateway.snapshot),
   workoutStartupFailureSnapshot: vi.fn(() => gateway.startupFailure),
+}));
+
+vi.mock("../lib/connect-api", () => ({
+  followWorkoutCollection: gateway.follow,
+  resetWorkoutCollectionCache: vi.fn(),
 }));
 
 import ConnectGate from "./ConnectGate";
@@ -55,14 +51,13 @@ beforeEach(() => {
     phase: { kind: "choosing", lastApproval: null },
     collections: gateway.collections,
   };
-  gateway.pending = null;
   gateway.connection = null;
   gateway.startupFailure = null;
   gateway.authorize.mockClear();
   gateway.select.mockClear();
   gateway.start.mockClear();
   gateway.applySetup.mockClear();
-  gateway.recover.mockClear();
+  gateway.follow.mockClear();
 });
 
 it("opens a listed collection through the session", async () => {
@@ -117,36 +112,76 @@ it("applies the reviewed setup plan", () => {
   expect(gateway.applySetup).toHaveBeenCalled();
 });
 
-it("renders the connected application in the ready phase", () => {
-  gateway.connection = {};
-  gateway.snapshot = {
+function readySnapshot(sync: Record<string, unknown> | null, acknowledge = vi.fn(async () => undefined)) {
+  return {
     phase: {
       kind: "ready",
       collectionId: "remembered-workouts",
       collection: gateway.collections[0],
-      connection: { id: "remembered-workouts", displayName: "Remembered workouts", records: { ledger: { subscribe: () => () => undefined } } },
+      connection: {
+        id: "remembered-workouts",
+        displayName: "Remembered workouts",
+        records: { ledger: { acknowledge } },
+      },
       rechecking: false,
       problem: null,
       unavailableTypes: [],
     },
     collections: gateway.collections,
+    sync,
   };
+}
+
+function sync(overrides: Record<string, unknown>) {
+  return {
+    state: "saved",
+    connection: "online",
+    health: null,
+    live: true,
+    pending: 0,
+    pendingFor: null,
+    writes: { pending: [], rejected: [], saveState: "saved", restored: true },
+    attention: [],
+    conflicts: 0,
+    holds: 0,
+    incidents: [],
+    ...overrides,
+  };
+}
+
+it("renders the connected application in the ready phase and follows the collection", () => {
+  gateway.snapshot = readySnapshot(sync({}));
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
   expect(screen.getByText("Connected")).toBeTruthy();
+  expect(gateway.follow).toHaveBeenCalledWith(expect.objectContaining({ collectionId: "remembered-workouts" }));
+  expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("offers recovery for an unsettled write", () => {
-  gateway.pending = {
-    collectionId: "remembered-workouts",
-    requestId: "mutation-1",
-    operation: "write",
-  };
+it("says when changes are kept on this device", () => {
+  gateway.snapshot = readySnapshot(sync({ state: "saved_on_device", connection: "offline", pending: 2, pendingFor: "while" }));
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
-  expect(screen.getByText("mutation-1")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Recover write" }));
-  expect(gateway.recover).toHaveBeenCalled();
+  expect(screen.getByRole("status")).toHaveTextContent("Saved on this device");
+});
+
+it("shows a refused write until it is dismissed", () => {
+  const acknowledge = vi.fn(async () => undefined);
+  gateway.snapshot = readySnapshot(sync({
+    state: "attention",
+    attention: ["rejected"],
+    writes: {
+      pending: [],
+      rejected: [{ mutationId: "mutation-1", records: [], createdAt: 0, state: "rejected" }],
+      saveState: "rejected",
+      restored: true,
+    },
+  }), acknowledge);
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.getByRole("alert")).toHaveTextContent("A change was not saved.");
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  expect(acknowledge).toHaveBeenCalledWith("mutation-1");
 });
 
 it("shows a signed-out session with a sign-in action", () => {

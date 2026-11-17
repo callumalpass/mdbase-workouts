@@ -2,16 +2,12 @@ import { useState, useEffect, useSyncExternalStore } from "react";
 import { api } from "../lib/api";
 import {
   authorizeWorkoutCollection,
+  connectErrorMessage,
   forgetWorkoutCollection,
   selectWorkoutCollection,
-  subscribeToWorkoutMutationBusy,
-  subscribeToWorkoutPendingMutation,
   subscribeToWorkoutSession,
-  workoutMutationBusySnapshot,
-  workoutPendingMutationSnapshot,
   workoutSnapshot,
 } from "../lib/connect";
-import { invalidateConnectApiCache } from "../lib/connect-api";
 import { clearWorkoutCache } from "../lib/workout-cache";
 
 interface Props {
@@ -23,14 +19,6 @@ export default function SettingsSheet({ open, onClose }: Props) {
   const snapshot = useSyncExternalStore(
     subscribeToWorkoutSession,
     workoutSnapshot,
-  );
-  const mutationBusy = useSyncExternalStore(
-    subscribeToWorkoutMutationBusy,
-    workoutMutationBusySnapshot,
-  );
-  const pendingMutation = useSyncExternalStore(
-    subscribeToWorkoutPendingMutation,
-    workoutPendingMutationSnapshot,
   );
   const phase = snapshot.phase;
   const connection = phase.kind === "ready" ? phase.connection : null;
@@ -99,26 +87,23 @@ export default function SettingsSheet({ open, onClose }: Props) {
             <p className="mt-2 truncate font-mono text-[10px] text-faded">{connected.collectionId}</p>
             <button
               type="button"
-              disabled={sessionBusy || mutationBusy}
+              disabled={sessionBusy}
               onClick={() => {
                 setSessionBusy(true);
                 setError("");
                 void (async () => {
                   try {
-                    const pending = connection?.records.ledger.getSnapshot().pending ?? [];
-                    if (pending.length && !window.confirm(
-                      "This collection has unsettled writes. Disconnecting discards their recovery records. Disconnect anyway?",
+                    const unsynced = snapshot.sync?.pending ?? 0;
+                    if (unsynced && !window.confirm(
+                      `${unsynced === 1 ? "1 change has" : `${unsynced} changes have`} not reached the cloud copy yet. Disconnect anyway?`,
                     )) {
                       return;
                     }
-                    await forgetWorkoutCollection(connected.collectionId, {
-                      confirmPending: pending.length > 0,
-                    });
+                    await forgetWorkoutCollection(connected.collectionId);
                     clearWorkoutCache(connected.collectionId);
-                    invalidateConnectApiCache();
                     onClose();
                   } catch (reason) {
-                    setError(reason instanceof Error ? reason.message : "The collection could not be disconnected.");
+                    setError(connectErrorMessage(reason));
                   } finally {
                     setSessionBusy(false);
                   }
@@ -134,21 +119,13 @@ export default function SettingsSheet({ open, onClose }: Props) {
               <button
                 key={candidate.collectionId}
                 type="button"
-                disabled={sessionBusy || mutationBusy || (
-                  pendingMutation !== null
-                  && pendingMutation.collectionId !== candidate.collectionId
-                ) || candidate.availability?.state === "unavailable"}
+                disabled={sessionBusy || candidate.availability?.state === "unavailable"}
                 onClick={() => {
                   setSessionBusy(true);
                   setError("");
                   void selectWorkoutCollection(candidate.collectionId)
-                    .then(() => {
-                      invalidateConnectApiCache();
-                      onClose();
-                    })
-                    .catch((reason: unknown) => {
-                      setError(reason instanceof Error ? reason.message : "The collection could not be opened.");
-                    })
+                    .then(onClose)
+                    .catch((reason: unknown) => setError(connectErrorMessage(reason)))
                     .finally(() => setSessionBusy(false));
                 }}
                 className="mt-2 block w-full border border-rule px-3 py-2 text-left text-xs text-faded active:bg-paper"
@@ -158,14 +135,12 @@ export default function SettingsSheet({ open, onClose }: Props) {
             ))}
             <button
               type="button"
-              disabled={sessionBusy || mutationBusy || pendingMutation !== null}
+              disabled={sessionBusy}
               onClick={() => {
                 setSessionBusy(true);
                 setError("");
                 void authorizeWorkoutCollection("choose")
-                  .catch((reason: unknown) => {
-                    setError(reason instanceof Error ? reason.message : "Another collection could not be connected.");
-                  })
+                  .catch((reason: unknown) => setError(connectErrorMessage(reason)))
                   .finally(() => setSessionBusy(false));
               }}
               className="mt-2 block w-full border border-ocean px-3 py-2 text-xs text-ocean active:bg-paper"

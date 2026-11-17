@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { subscribeToWorkoutData } from "../lib/connect-api";
 import { getUserTimeZone } from "../lib/datetime";
 import type { Plan, QuickLog, Session } from "../lib/types";
 import { useExercises } from "../hooks/useExercises";
@@ -54,8 +55,10 @@ export default function CalendarTab() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
+  // A re-read after a change keeps the month on screen; only the first load shows loading.
+  const loaded = useRef(false);
   const loadCalendarData = useCallback(async () => {
-    setLoading(true);
+    if (!loaded.current) setLoading(true);
     try {
       const loadSessions = async () => {
         const collected: Session[] = [];
@@ -77,17 +80,21 @@ export default function CalendarTab() {
       setSessions(collected);
       setPlans(allPlans);
       setQuickLogs(allQuickLogs);
+      loaded.current = true;
       setLoading(false);
     } catch {
-      setSessions([]);
-      setPlans([]);
-      setQuickLogs([]);
+      if (!loaded.current) {
+        setSessions([]);
+        setPlans([]);
+        setQuickLogs([]);
+      }
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadCalendarData();
+    void loadCalendarData();
+    return subscribeToWorkoutData(() => void loadCalendarData());
   }, [loadCalendarData]);
 
   useEffect(() => {
