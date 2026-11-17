@@ -77,7 +77,7 @@ jobs:
 
       - name: Verify application manifest
         env:
-          MANIFEST_URL: https://callumalpass.github.io/mdbase-workouts/.well-known/mdbase-app.json?commit=${{ github.sha }}
+          MANIFEST_URL: https://workouts.mdbase.dev/.well-known/mdbase-app.json?commit=${{ github.sha }}
           EXPECTED_MANIFEST_SHA256: ${{ needs.test.outputs.manifest-sha256 }}
         run: |
           node --input-type=module <<'NODE'
@@ -101,7 +101,7 @@ jobs:
             throw new Error("The deployed manifest does not match the uploaded Pages artifact.");
           }
           const manifest = JSON.parse(source);
-          const appUrl = "https://callumalpass.github.io/mdbase-workouts/";
+          const appUrl = "https://workouts.mdbase.dev/";
           const contracts = ["exercise", "plan", "plan-template", "quick-log", "session"]
             .map((name) => `mdbase.workouts.${name}`);
           const actualContracts = manifest.requirements?.contracts

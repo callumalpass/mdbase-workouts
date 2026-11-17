@@ -2,9 +2,9 @@
   "manifest_version": 1,
   "id": "dev.mdbase.workouts",
   "name": "MDBase Workouts",
-  "homepage": "https://callumalpass.github.io/mdbase-workouts/",
+  "homepage": "https://workouts.mdbase.dev/",
   "redirect_uris": [
-    "https://callumalpass.github.io/mdbase-workouts/"
+    "https://workouts.mdbase.dev/"
   ],
   "requirements": {
     "access": "full_collection",
