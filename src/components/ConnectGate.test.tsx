@@ -79,6 +79,8 @@ it("chooses another collection through the SDK chooser", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Choose workout collection" }));
 
   expect(gateway.authorize).toHaveBeenCalledWith("choose", expect.anything());
+  // The person answers in the Connect window; a timeout would close it mid-pick.
+  expect(gateway.authorize.mock.calls[0][1]).not.toHaveProperty("timeoutMs");
 });
 
 it("asks for updated access before opening a rejected collection", () => {
@@ -96,6 +98,7 @@ it("asks for updated access before opening a rejected collection", () => {
   fireEvent.click(screen.getByRole("button", { name: "Review updated access" }));
 
   expect(gateway.authorize).toHaveBeenCalledWith("selected", expect.anything());
+  expect(gateway.authorize.mock.calls[0][1]).not.toHaveProperty("timeoutMs");
 });
 
 it("applies the reviewed setup plan", () => {
