@@ -12,6 +12,7 @@ const gateway = vi.hoisted(() => {
     add: vi.fn(),
     approve: vi.fn(),
     signIn: vi.fn(),
+    startOver: vi.fn(async () => true),
     connection: null as Record<string, unknown> | null,
     follow: vi.fn(() => () => undefined),
     select: vi.fn(async () => undefined),
@@ -37,6 +38,7 @@ vi.mock("../lib/connect", () => ({
   connectIsRequired: vi.fn(() => true),
   selectWorkoutCollection: gateway.select,
   signInToWorkouts: gateway.signIn,
+  startWorkoutsOver: gateway.startOver,
   startWorkoutSession: gateway.start,
   subscribeToWorkoutStartupFailure: vi.fn(() => () => undefined),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
@@ -62,6 +64,7 @@ beforeEach(() => {
   gateway.add.mockClear();
   gateway.approve.mockClear();
   gateway.signIn.mockClear();
+  gateway.startOver.mockClear();
   gateway.select.mockClear();
   gateway.start.mockClear();
   gateway.applySetup.mockClear();
@@ -318,4 +321,38 @@ it("shows a described problem with its action", () => {
 
   expect(screen.getByRole("alert")).toHaveTextContent("Open mdbase connect");
   expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+});
+
+it("offers a way out of a problem the app cannot get past", async () => {
+  // Device keys only half created: reopening fails every time.
+  gateway.snapshot = {
+    phase: {
+      kind: "problem",
+      collectionId: null,
+      problem: {
+        title: "Couldn't open your collection",
+        message: "Something went wrong while opening it. Reload the app to try again.",
+        action: "reload",
+        actionLabel: "Reload",
+        code: "open_failed",
+      },
+    },
+    collections: [],
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Sign out and start again" }));
+
+  await waitFor(() => expect(gateway.startOver).toHaveBeenCalledTimes(1));
+  expect(gateway.start).not.toHaveBeenCalled();
+});
+
+it("does not offer to start over when nothing is wrong", () => {
+  gateway.snapshot = {
+    phase: { kind: "signed_out", notice: null },
+    collections: [],
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.queryByRole("button", { name: "Sign out and start again" })).toBeNull();
 });
