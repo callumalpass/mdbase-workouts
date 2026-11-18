@@ -38,6 +38,14 @@ export const workoutDeclaration: MdbaseApplicationDeclaration = {
   storage: { applicationNamespace: "mdbase-workouts" },
 };
 
+/**
+ * Where Connect returns the Private-collection approval window: the manifest's
+ * redirect URI on this origin, else the origin root (the SDK chooses the same).
+ */
+export const workoutRedirectUri = manifest.redirect_uris.find((uri) => {
+  try { return new URL(uri).origin === appRoot.origin; } catch { return false; }
+}) ?? new URL("/", appRoot.origin).href;
+
 let workoutEntry: Mdbase | null = null;
 
 function entry(): Mdbase {
