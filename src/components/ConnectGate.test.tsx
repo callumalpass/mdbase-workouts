@@ -154,6 +154,21 @@ it("says what a slow Private collection is waiting for", () => {
 
   expect(screen.getByRole("status")).toHaveTextContent("Opening Remembered workouts · connecting…");
   expect(screen.getByRole("status")).toHaveTextContent("allow Workouts if it asks");
+  // Never a dead end: a reload starts the open afresh, and signing out is the
+  // way past one that cannot finish.
+  expect(screen.getByRole("button", { name: "Reload" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Sign out and start again" })).toBeEnabled();
+});
+
+it("offers nothing while a Private collection opens at the usual pace", () => {
+  gateway.snapshot = {
+    phase: { kind: "opening", collectionId: "remembered-workouts", displayName: "Remembered workouts", slow: false },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Sign out and start again" })).toBeNull();
 });
 
 it("points to the Connect window while it is open", () => {

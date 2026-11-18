@@ -99,6 +99,10 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   const displayedError = error || problem?.message || "";
   const unavailable = phase.kind === "unavailable";
   const starting = phase.kind === "starting" || phase.kind === "authorizing" || phase.kind === "opening";
+  // A slow open is still the SDK's to finish, but the person gets a way on:
+  // reload to start it afresh, or sign out when even that does not help.
+  const slowOpening = phase.kind === "opening" && phase.slow;
+  const stuck = phase.kind === "problem" || slowOpening;
   const action = connectionAction(phase, () => ({
     kind: phase.kind,
     perform: () => act(async () => {
@@ -122,6 +126,9 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           break;
         case "needs_setup":
           await applyWorkoutCollectionSetup(requestOptions());
+          break;
+        case "opening":
+          window.location.reload();
           break;
         case "problem":
           switch (phase.problem.action) {
@@ -148,7 +155,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   }));
   const actionLabel = busy
     ? "Connecting…"
-    : starting && phase.kind !== "authorizing"
+    : starting && phase.kind !== "authorizing" && !slowOpening
       ? phase.kind === "opening"
         ? "Opening workout collection…"
         : "Checking connection…"
@@ -276,14 +283,14 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           {!terminal && !unavailable && action.visible && (
             <button
               type="button"
-              disabled={busy || (starting && phase.kind !== "authorizing")}
+              disabled={busy || (starting && phase.kind !== "authorizing" && !slowOpening)}
               onClick={() => void action.perform()}
               className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
             >
               {actionLabel}
             </button>
           )}
-          {phase.kind === "problem" && (
+          {stuck && (
             <button
               type="button"
               disabled={busy}
@@ -329,7 +336,7 @@ export function waitingCopy(phase: MdbasePhase): { title: string; detail: string
       return {
         title: `Opening ${name}${phase.progress ? ` · ${OPENING_STEPS[phase.progress]}` : ""}…`,
         detail: phase.slow
-          ? "This is taking longer than usual. A Private collection opens through the computer that holds it: check that mdbase Connect is running there, and allow Workouts if it asks."
+          ? "This is taking longer than usual. A Private collection opens through the computer that holds it, so check that mdbase Connect is running there and allow Workouts if it asks. If it is, reload to try again."
           : null,
       };
     }
@@ -392,6 +399,8 @@ function connectionAction(
       };
     case "needs_setup":
       return { label: "Apply workout definitions", visible: true, perform };
+    case "opening":
+      return { label: "Reload", visible: phase.slow, perform };
     case "problem":
       return {
         label: phase.problem.actionLabel
