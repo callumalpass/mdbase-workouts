@@ -14,6 +14,7 @@ import {
   startWorkoutSession,
   subscribeToWorkoutSession,
   subscribeToWorkoutStartupFailure,
+  unlockWorkoutCollection,
   workoutSnapshot,
   workoutStartupFailureSnapshot,
 } from "../lib/connect";
@@ -175,6 +176,43 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
             </div>
           )}
 
+          <WaitingNotice phase={phase} />
+
+          {phase.kind === "needs_unlock" && phase.mode === "password" && (
+            <form
+              className="mb-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const field = event.currentTarget.elements.namedItem("password") as HTMLInputElement;
+                const password = field.value;
+                field.value = "";
+                void act(() => unlockWorkoutCollection(phase.collectionId, password, requestOptions()));
+              }}
+            >
+              <label className="block text-sm">
+                <span className="block font-semibold">Encryption password</span>
+                <span className="mt-1 block text-faded">
+                  {phase.problem?.message ?? "Enter your mdbase encryption password to read this collection in this browser."}
+                </span>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  disabled={busy || phase.unlocking}
+                  className="mt-2 w-full border border-rule bg-paper px-3 py-2"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={busy || phase.unlocking}
+                className="mt-3 w-full bg-blush px-4 py-3 text-sm font-semibold text-paper disabled:opacity-50"
+              >
+                {busy || phase.unlocking ? "Unlocking…" : "Unlock"}
+              </button>
+            </form>
+          )}
+
           {phase.kind === "needs_setup" && (
             <div className="mb-4 border border-ocean bg-paper px-3 py-3 text-sm">
               <strong className="block">Review workout definitions</strong>
@@ -231,6 +269,67 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         </div>
       </section>
     </main>
+  );
+}
+
+/**
+ * While the SDK starts, waits on the Connect window or opens a collection there
+ * is no action to offer, so say what it is waiting for instead of showing an
+ * empty card. A Private collection opens through the computer that holds it;
+ * when that takes long, it is usually still waiting for that computer.
+ */
+export function waitingCopy(phase: MdbasePhase): { title: string; detail: string | null } | null {
+  switch (phase.kind) {
+    case "starting":
+      return { title: "Checking connection…", detail: null };
+    case "authorizing":
+      return {
+        title: "Continue in the mdbase window.",
+        detail: phase.purpose === "sign_in"
+          ? "Sign in there. This page carries on by itself once you have."
+          : "Choose or approve the collection there. This page carries on by itself once you have.",
+      };
+    case "opening": {
+      const name = phase.displayName ?? "your workout collection";
+      return {
+        title: `Opening ${name}${phase.progress ? ` · ${OPENING_STEPS[phase.progress]}` : ""}…`,
+        detail: phase.slow
+          ? "This is taking longer than usual. A Private collection opens through the computer that holds it: check that mdbase Connect is running there, and allow Workouts if it asks."
+          : null,
+      };
+    }
+    case "needs_unlock":
+      return phase.mode === "password"
+        ? null
+        : {
+          title: "This collection is locked in this browser.",
+          detail: "It can only be unlocked from a computer running the mdbase app. Open it there, then reload this page.",
+        };
+    default:
+      return null;
+  }
+}
+
+const OPENING_STEPS: Record<NonNullable<Extract<MdbasePhase, { kind: "opening" }>["progress"]>, string> = {
+  joining: "joining",
+  opening_store: "opening storage",
+  connecting_log: "connecting",
+  syncing: "syncing",
+  loading_snapshot: "loading records",
+  replaying: "catching up",
+  waiting_for_key: "waiting for the key",
+  verifying_read: "checking access",
+  checking_setup: "checking definitions",
+};
+
+function WaitingNotice({ phase }: { phase: MdbasePhase }) {
+  const copy = waitingCopy(phase);
+  if (!copy) return null;
+  return (
+    <div role="status" aria-live="polite" className="mb-4 border border-rule bg-paper px-3 py-3 text-sm">
+      <strong className="block font-semibold">{copy.title}</strong>
+      {copy.detail && <p className="mt-1 leading-6 text-faded">{copy.detail}</p>}
+    </div>
   );
 }
 

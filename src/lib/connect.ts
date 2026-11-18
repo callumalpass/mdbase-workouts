@@ -107,6 +107,16 @@ export async function applyWorkoutCollectionSetup(
   throw new Error("The workout collection kept changing while its definitions were being applied. Try again.");
 }
 
+/** Unlock a Private collection with the account's encryption password. The
+ * password goes straight to the SDK, which neither stores nor logs it. */
+export async function unlockWorkoutCollection(
+  collectionId: string,
+  password: string,
+  options: ConnectRequestOptions = {},
+): Promise<void> {
+  await entry().unlock(collectionId, { password }, options);
+}
+
 export async function forgetWorkoutCollection(collectionId: string): Promise<void> {
   await entry().forget(collectionId);
 }
