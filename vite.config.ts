@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { readFileSync } from "node:fs";
@@ -76,6 +76,18 @@ export default defineConfig({
       },
     }),
   ],
+  // Rollup assumes a property an object literal sets to null stays null when the
+  // object only escapes through a Promise's resolve(). The SDK's relay carrier is
+  // such an object: the caller sets `onmessage` after the pipe opens, and Rollup
+  // deleted the `carrier.onmessage?.(…)` call, so a Private collection's handshake
+  // reply was dropped and opening never finished. Treat property reads as having
+  // side effects so calls like it are kept, in the page and in the SDK's worker.
+  build: {
+    rollupOptions: { treeshake: { propertyReadSideEffects: "always" } },
+  },
+  worker: {
+    rollupOptions: { treeshake: { propertyReadSideEffects: "always" } },
+  },
   server: {
     port: 5177,
     strictPort: true,
