@@ -52,6 +52,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // First, so it answers .wasm requests before Workbox's routes.
+        importScripts: ["sw-wasm.js"],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
