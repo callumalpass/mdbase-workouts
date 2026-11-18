@@ -13,6 +13,7 @@ import {
   connectIsRequired,
   selectWorkoutCollection,
   signInToWorkouts,
+  startWorkoutsOver,
   startWorkoutSession,
   subscribeToWorkoutSession,
   subscribeToWorkoutStartupFailure,
@@ -280,6 +281,21 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
               className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
             >
               {actionLabel}
+            </button>
+          )}
+          {phase.kind === "problem" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void act(async () => {
+                foregroundRequest.current?.abort("Starting the workout connection over");
+                await startWorkoutsOver((pending) => window.confirm(
+                  `${pending === 1 ? "1 change hasn't" : pending ? `${pending} changes haven't` : "Some changes haven't"} reached mdbase yet. Signing out loses ${pending === 1 ? "it" : "them"} in this browser. Sign out anyway?`,
+                ));
+              })}
+              className="mt-3 w-full border border-rule px-4 py-2 text-xs text-faded active:bg-paper disabled:opacity-50"
+            >
+              Sign out and start again
             </button>
           )}
           <p className="mt-3 text-center text-xs leading-5 text-faded">

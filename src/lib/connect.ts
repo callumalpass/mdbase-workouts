@@ -127,6 +127,38 @@ export async function unlockWorkoutCollection(
   await entry().unlock(collectionId, { password }, options);
 }
 
+/**
+ * Sign out of mdbase in this browser and erase its sign-in data, so the next
+ * sign-in starts a fresh installation. This is the way out of a sign-in this
+ * browser can no longer finish (for example device keys that were only half
+ * created). `confirmDiscard` is asked before changes that have not reached
+ * mdbase are thrown away; answering no keeps everything as it is.
+ */
+export async function startWorkoutsOver(
+  confirmDiscard: (pending: number | null) => boolean,
+): Promise<boolean> {
+  try {
+    await entry().signOut();
+    return true;
+  } catch (error) {
+    if (!isPendingWrites(error)) throw error;
+    if (!confirmDiscard(pendingCount(error))) return false;
+    await entry().signOut({ discard: true });
+    return true;
+  }
+}
+
+function isPendingWrites(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { reason, code } = error as { reason?: unknown; code?: unknown };
+  return reason === "sign_out_pending_writes" || code === "sign_out_pending_writes";
+}
+
+function pendingCount(error: unknown): number | null {
+  const details = (error as { details?: unknown }).details;
+  return typeof details === "number" && details > 0 ? details : null;
+}
+
 export async function forgetWorkoutCollection(collectionId: string): Promise<void> {
   await entry().forget(collectionId);
 }
