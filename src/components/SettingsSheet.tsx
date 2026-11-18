@@ -1,7 +1,7 @@
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { api } from "../lib/api";
 import {
-  authorizeWorkoutCollection,
+  addWorkoutCollection,
   connectErrorMessage,
   forgetWorkoutCollection,
   selectWorkoutCollection,
@@ -139,7 +139,7 @@ export default function SettingsSheet({ open, onClose }: Props) {
               onClick={() => {
                 setSessionBusy(true);
                 setError("");
-                void authorizeWorkoutCollection("choose")
+                void addWorkoutCollection()
                   .catch((reason: unknown) => setError(connectErrorMessage(reason)))
                   .finally(() => setSessionBusy(false));
               }}

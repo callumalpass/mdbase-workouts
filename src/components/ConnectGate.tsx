@@ -7,10 +7,12 @@ import {
 } from "react";
 import {
   applyWorkoutCollectionSetup,
-  authorizeWorkoutCollection,
+  addWorkoutCollection,
+  approveWorkoutCollection,
   connectErrorMessage,
   connectIsRequired,
   selectWorkoutCollection,
+  signInToWorkouts,
   startWorkoutSession,
   subscribeToWorkoutSession,
   subscribeToWorkoutStartupFailure,
@@ -99,26 +101,36 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   const action = connectionAction(phase, () => ({
     kind: phase.kind,
     perform: () => act(async () => {
+      // Each phase moves on with the SDK call its README names for it.
       switch (phase.kind) {
         case "signed_out":
+          await signInToWorkouts(requestOptions());
+          break;
         case "choosing":
-          await authorizeWorkoutCollection("choose", requestOptions());
+          await addWorkoutCollection(requestOptions());
           break;
         case "needs_approval":
-          await authorizeWorkoutCollection("selected", requestOptions());
+          await approveWorkoutCollection(phase.collectionId, requestOptions());
           break;
         case "needs_setup":
           await applyWorkoutCollectionSetup(requestOptions());
           break;
         case "problem":
-          if (phase.problem.action === "set_up") {
-            await applyWorkoutCollectionSetup(requestOptions());
-          } else if (phase.problem.action === "sign_in") {
-            await authorizeWorkoutCollection("choose", requestOptions());
-          } else if (phase.problem.action === "approve") {
-            await authorizeWorkoutCollection("selected", requestOptions());
-          } else {
-            await startWorkoutSession(requestOptions());
+          switch (phase.problem.action) {
+            case "set_up":
+              await applyWorkoutCollectionSetup(requestOptions());
+              break;
+            case "sign_in":
+              await signInToWorkouts(requestOptions());
+              break;
+            case "approve":
+              await approveWorkoutCollection(phase.collectionId, requestOptions());
+              break;
+            case "choose_collection":
+              await addWorkoutCollection(requestOptions());
+              break;
+            default:
+              await startWorkoutSession(requestOptions());
           }
           break;
         default:
