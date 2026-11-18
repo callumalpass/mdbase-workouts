@@ -86,12 +86,22 @@ export async function selectWorkoutCollection(
   await entry().select(collectionId, options);
 }
 
-export async function authorizeWorkoutCollection(
-  target: "choose" | "selected",
+/** From the sign-in button: sign in to mdbase (opens Connect). */
+export async function signInToWorkouts(options: { signal?: AbortSignal } = {}): Promise<void> {
+  await entry().signIn(options);
+}
+
+/** From the add button once signed in: choose or create a collection in Connect. */
+export async function addWorkoutCollection(options: { signal?: AbortSignal } = {}): Promise<void> {
+  await entry().addCollection(options);
+}
+
+/** From the allow button: approve one collection (default: the requested one). */
+export async function approveWorkoutCollection(
+  collectionId: string | null,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  if (target === "choose") await entry().addCollection(options);
-  else await entry().reauthorize(options);
+  await entry().approve(collectionId, options);
 }
 
 export async function applyWorkoutCollectionSetup(

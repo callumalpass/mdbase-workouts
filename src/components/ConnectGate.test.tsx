@@ -9,7 +9,9 @@ const gateway = vi.hoisted(() => {
   };
   return {
     applySetup: vi.fn(),
-    authorize: vi.fn(),
+    add: vi.fn(),
+    approve: vi.fn(),
+    signIn: vi.fn(),
     connection: null as Record<string, unknown> | null,
     follow: vi.fn(() => () => undefined),
     select: vi.fn(async () => undefined),
@@ -26,13 +28,15 @@ const gateway = vi.hoisted(() => {
 
 vi.mock("../lib/connect", () => ({
   applyWorkoutCollectionSetup: gateway.applySetup,
-  authorizeWorkoutCollection: gateway.authorize,
+  addWorkoutCollection: gateway.add,
+  approveWorkoutCollection: gateway.approve,
   connectErrorMessage: vi.fn((reason: unknown) => {
     const value = reason as { message?: string };
     return value?.message ?? String(reason);
   }),
   connectIsRequired: vi.fn(() => true),
   selectWorkoutCollection: gateway.select,
+  signInToWorkouts: gateway.signIn,
   startWorkoutSession: gateway.start,
   subscribeToWorkoutStartupFailure: vi.fn(() => () => undefined),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
@@ -55,7 +59,9 @@ beforeEach(() => {
   };
   gateway.connection = null;
   gateway.startupFailure = null;
-  gateway.authorize.mockClear();
+  gateway.add.mockClear();
+  gateway.approve.mockClear();
+  gateway.signIn.mockClear();
   gateway.select.mockClear();
   gateway.start.mockClear();
   gateway.applySetup.mockClear();
@@ -76,9 +82,25 @@ it("chooses another collection through the SDK chooser", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Choose workout collection" }));
 
-  expect(gateway.authorize).toHaveBeenCalledWith("choose", expect.anything());
+  expect(gateway.add).toHaveBeenCalledWith(expect.anything());
   // The person answers in the Connect window; a timeout would close it mid-pick.
-  expect(gateway.authorize.mock.calls[0][1]).not.toHaveProperty("timeoutMs");
+  expect(gateway.add.mock.calls[0][0]).not.toHaveProperty("timeoutMs");
+});
+
+it("signs in from the signed-out screen instead of adding a collection", () => {
+  gateway.snapshot = {
+    phase: {
+      kind: "signed_out",
+      notice: { message: "The mdbase window was closed before access was approved. Sign in again to continue.", action: "sign_in" },
+    },
+    collections: [],
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Sign in to mdbase" }));
+
+  expect(gateway.signIn).toHaveBeenCalled();
+  expect(gateway.add).not.toHaveBeenCalled();
 });
 
 it("asks for updated access before opening a rejected collection", () => {
@@ -95,8 +117,7 @@ it("asks for updated access before opening a rejected collection", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Review updated access" }));
 
-  expect(gateway.authorize).toHaveBeenCalledWith("selected", expect.anything());
-  expect(gateway.authorize.mock.calls[0][1]).not.toHaveProperty("timeoutMs");
+  expect(gateway.approve).toHaveBeenCalledWith("remembered-workouts", expect.anything());
 });
 
 it("applies the reviewed setup plan", () => {
