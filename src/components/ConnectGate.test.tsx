@@ -14,6 +14,7 @@ const gateway = vi.hoisted(() => {
     follow: vi.fn(() => () => undefined),
     select: vi.fn(async () => undefined),
     start: vi.fn(async () => undefined),
+    unlock: vi.fn(async () => undefined),
     startupFailure: null as unknown,
     snapshot: {
       phase: { kind: "choosing", lastApproval: null },
@@ -35,6 +36,7 @@ vi.mock("../lib/connect", () => ({
   startWorkoutSession: gateway.start,
   subscribeToWorkoutStartupFailure: vi.fn(() => () => undefined),
   subscribeToWorkoutSession: vi.fn(() => () => undefined),
+  unlockWorkoutCollection: gateway.unlock,
   workoutSnapshot: vi.fn(() => gateway.snapshot),
   workoutStartupFailureSnapshot: vi.fn(() => gateway.startupFailure),
 }));
@@ -58,6 +60,7 @@ beforeEach(() => {
   gateway.start.mockClear();
   gateway.applySetup.mockClear();
   gateway.follow.mockClear();
+  gateway.unlock.mockClear();
 });
 
 it("opens a listed collection through the session", async () => {
@@ -110,6 +113,55 @@ it("applies the reviewed setup plan", () => {
   fireEvent.click(screen.getByRole("button", { name: "Apply workout definitions" }));
 
   expect(gateway.applySetup).toHaveBeenCalled();
+});
+
+it("says what a slow Private collection is waiting for", () => {
+  gateway.snapshot = {
+    phase: {
+      kind: "opening",
+      collectionId: "remembered-workouts",
+      displayName: "Remembered workouts",
+      slow: true,
+      progress: "connecting_log",
+    },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.getByRole("status")).toHaveTextContent("Opening Remembered workouts · connecting…");
+  expect(screen.getByRole("status")).toHaveTextContent("allow Workouts if it asks");
+});
+
+it("points to the Connect window while it is open", () => {
+  gateway.snapshot = {
+    phase: { kind: "authorizing", purpose: "add", collectionId: null },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  expect(screen.getByRole("status")).toHaveTextContent("Continue in the mdbase window.");
+});
+
+it("unlocks a Private collection with the encryption password", () => {
+  gateway.snapshot = {
+    phase: {
+      kind: "needs_unlock",
+      collectionId: "remembered-workouts",
+      displayName: "Remembered workouts",
+      mode: "password",
+      unlocking: false,
+      problem: null,
+    },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  const field = screen.getByLabelText(/Encryption password/) as HTMLInputElement;
+  fireEvent.change(field, { target: { value: "correct horse" } });
+  fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+  expect(gateway.unlock).toHaveBeenCalledWith("remembered-workouts", "correct horse", expect.anything());
+  expect(field.value).toBe("");
 });
 
 function readySnapshot(sync: Record<string, unknown> | null, acknowledge = vi.fn(async () => undefined)) {
