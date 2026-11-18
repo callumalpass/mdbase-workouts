@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const gateway = vi.hoisted(() => {
@@ -161,6 +161,33 @@ it("points to the Connect window while it is open", () => {
   render(<ConnectGate><p>Connected</p></ConnectGate>);
 
   expect(screen.getByRole("status")).toHaveTextContent("Continue in the mdbase window.");
+});
+
+it("opens the sign-in window again when it is gone, on the same request", async () => {
+  // A reload keeps the pending sign-in but not its window.
+  gateway.snapshot = {
+    phase: { kind: "authorizing", purpose: "sign_in", collectionId: null },
+    collections: [],
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open the mdbase window again" }));
+
+  await waitFor(() => expect(gateway.signIn).toHaveBeenCalled());
+  expect(gateway.add).not.toHaveBeenCalled();
+});
+
+it("opens the add-collection window again for an add in progress", async () => {
+  gateway.snapshot = {
+    phase: { kind: "authorizing", purpose: "add", collectionId: null },
+    collections: gateway.collections,
+  };
+  render(<ConnectGate><p>Connected</p></ConnectGate>);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open the mdbase window again" }));
+
+  await waitFor(() => expect(gateway.add).toHaveBeenCalled());
+  expect(gateway.signIn).not.toHaveBeenCalled();
 });
 
 it("unlocks a Private collection with the encryption password", () => {

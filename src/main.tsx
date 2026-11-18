@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import UpdateBanner from "./components/UpdateBanner";
 import "./index.css";
 import {
   connectIsRequired,
@@ -26,6 +27,7 @@ if (connectIsRequired() && isGrantCallback(new URL(location.href), workoutRedire
   if (connectIsRequired()) void startWorkoutSession();
   root.render(
     <React.StrictMode>
+      <UpdateBanner />
       <App />
     </React.StrictMode>
   );

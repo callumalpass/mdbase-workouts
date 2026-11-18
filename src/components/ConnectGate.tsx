@@ -106,6 +106,13 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
         case "signed_out":
           await signInToWorkouts(requestOptions());
           break;
+        case "authorizing":
+          // The window may be gone (closed, or this page reloaded) while the
+          // request is still pending: the same action opens it again on it.
+          if (phase.purpose === "sign_in") await signInToWorkouts(requestOptions());
+          else if (phase.purpose === "add") await addWorkoutCollection(requestOptions());
+          else await approveWorkoutCollection(phase.collectionId, requestOptions());
+          break;
         case "choosing":
           await addWorkoutCollection(requestOptions());
           break;
@@ -140,7 +147,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
   }));
   const actionLabel = busy
     ? "Connecting…"
-    : starting
+    : starting && phase.kind !== "authorizing"
       ? phase.kind === "opening"
         ? "Opening workout collection…"
         : "Checking connection…"
@@ -268,7 +275,7 @@ function RequiredConnectGate({ children }: { children: ReactNode }) {
           {!terminal && !unavailable && action.visible && (
             <button
               type="button"
-              disabled={busy || starting}
+              disabled={busy || (starting && phase.kind !== "authorizing")}
               onClick={() => void action.perform()}
               className="w-full bg-blush px-4 py-3 text-sm font-semibold text-paper transition-transform active:scale-[0.98] disabled:opacity-50"
             >
@@ -298,8 +305,8 @@ export function waitingCopy(phase: MdbasePhase): { title: string; detail: string
       return {
         title: "Continue in the mdbase window.",
         detail: phase.purpose === "sign_in"
-          ? "Sign in there. This page carries on by itself once you have."
-          : "Choose or approve the collection there. This page carries on by itself once you have.",
+          ? "Sign in there. This page carries on by itself once you have. If you can't see that window, open it again below."
+          : "Choose or approve the collection there. This page carries on by itself once you have. If you can't see that window, open it again below.",
       };
     case "opening": {
       const name = phase.displayName ?? "your workout collection";
@@ -357,6 +364,8 @@ function connectionAction(
   switch (phase.kind) {
     case "signed_out":
       return { label: "Sign in to mdbase", visible: true, perform };
+    case "authorizing":
+      return { label: "Open the mdbase window again", visible: true, perform };
     case "choosing":
       return { label: "Choose workout collection", visible: true, perform };
     case "needs_approval":
