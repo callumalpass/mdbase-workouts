@@ -4,12 +4,14 @@ import { rollup, type TreeshakingOptions } from "rollup";
 import config from "../../vite.config";
 
 /**
- * The SDK's relay carrier is created with `onmessage: null` and handed out
- * through a Promise's resolve(); the SDK sets the handler afterwards. Rollup's
- * default tree-shaking decides the property is always null and deletes the call
- * that delivers each relay message, so a Private collection never finishes
- * opening in a production build. These bundle the SDK's own module with the
- * app's settings and check the call is still there.
+ * The SDK's relay carrier is handed out through a Promise's resolve(); the SDK
+ * sets the message handler afterwards. Up to SDK 0.1.14 the carrier was created
+ * with `onmessage: null`, and Rollup's default tree-shaking decided the property
+ * was always null and deleted the call that delivers each relay message, so a
+ * Private collection never finished opening in a production build. SDK 0.1.19
+ * keeps the handlers behind accessors so the call survives. These bundle the
+ * SDK's own module and check the call is still there, with Rollup's defaults and
+ * with the app's settings.
  */
 async function bundled(treeshake: TreeshakingOptions | undefined): Promise<string> {
   const build = await rollup({
@@ -28,7 +30,8 @@ async function bundled(treeshake: TreeshakingOptions | undefined): Promise<strin
   return output[0].code;
 }
 
-const delivers = /carrier\.onmessage\?\.\(b\.slice/;
+// `carrier.onmessage?.(…)` in SDK 0.1.14, `onmessage?.(…)` in 0.1.19.
+const delivers = /onmessage\?\.\(b\.slice/;
 
 function treeshakeOf(options: unknown): TreeshakingOptions {
   const value = (options as { rollupOptions?: { treeshake?: unknown } } | undefined)?.rollupOptions?.treeshake;
@@ -37,9 +40,9 @@ function treeshakeOf(options: unknown): TreeshakingOptions {
 }
 
 describe("production bundling of the SDK's relay pipe", () => {
-  it("drops the relay message handler under Rollup's default tree-shaking", async () => {
-    // Guards the premise: if Rollup stops doing this, the setting can go.
-    expect(await bundled(undefined)).not.toMatch(delivers);
+  it("keeps it under Rollup's default tree-shaking", async () => {
+    // The SDK's own fix (seen in 0.1.19); the app's setting below is now a second guard.
+    expect(await bundled(undefined)).toMatch(delivers);
   });
 
   it("keeps it with the page build's settings", async () => {
